@@ -117,7 +117,11 @@ class exports.CNEditor extends Backbone.View
     # Returns a markdown string representing the editor content
     ###
     getEditorContent : () ->
-        cozyContent = @editorBody$.html()
+        # Eliminate rangy markers from the saved text
+        cleanContent = @editorBody$.clone()
+        cleanContent.children("span .rangySelectionBoundary").remove()
+        cozyContent = cleanContent.html()
+        alert cozyContent 
         return @_cozy2md cozyContent
         
     ### ------------------------------------------------------------------------
@@ -842,7 +846,7 @@ class exports.CNEditor extends Backbone.View
                             line.lineDepthAbs -= 1
                             line.lineDepthRel -= parent.lineDepthRel
                             # if lineNext is a Lx, then it must be turned in a Tx
-                            if line.lineNext.lineType[0]=='L'
+                            if line.lineNext? and line.lineNext.lineType[0]=='L'
                                 nextL = line.lineNext
                                 nextL.lineType='T'+nextL.lineType[1] 
                                 nextL.line$.prop('class',"#{nextL.lineType}-#{nextL.lineDepthAbs}")
@@ -1530,13 +1534,11 @@ class exports.CNEditor extends Backbone.View
     # Add html code to the history
     ###
     _addHistory : () ->
-        console.log @_history
-        # add the html content to history
+        # mark selection
+        savedSel = rangy.saveSelection(rangy.dom.getIframeWindow @editorIframe)
+        @_history.historySelect.push savedSel
+        # add the html content to history with markers
         @_history.history.push @editorBody$.html()
-        # add the selection to history
-        sel = rangy.getIframeSelection(@editorIframe)
-        range = sel.getRangeAt(0)
-        @_history.historySelect.push range
         # update the index
         @_history.index = @_history.history.length-1
         # fire an event indicating history has changed
@@ -1547,18 +1549,25 @@ class exports.CNEditor extends Backbone.View
     unDo : () ->
         # if there is an action to undo
         if @_history.index > 0
+            # if we are in an unsaved state
+            if @_history.index == @_history.history.length-1
+                # save current state
+                @_addHistory()
+                # re-evaluate index
+                @_history.index -= 1
             # restore html
             @editorBody$.html @_history.history[@_history.index]
             # restore selection
-            sel = rangy.getIframeSelection(@editorIframe)
-            
-            sel.setSingleRange @_history.historySelect[@_history.index]
+            savedSel = @_history.historySelect[@_history.index]
+            rangy.restoreSelection(savedSel)
             # update the index
             @_history.index -= 1
+        
     ###
     # Redo a undo-ed action
     ###
     reDo : () ->
+        
         # if there is an action to redo
         if @_history.index < (@_history.history.length-2)
             # update the index
@@ -1566,10 +1575,8 @@ class exports.CNEditor extends Backbone.View
             # restore html
             @editorBody$.html @_history.history[@_history.index+1]
             # restore selection
-            sel = rangy.getIframeSelection(@editorIframe)
-            
-            sel.setSingleRange @_history.historySelect[@_history.index]
-                        
+            savedSel = @_history.historySelect[@_history.index+1]
+            rangy.restoreSelection(savedSel)
 
     ### ------------------------------------------------------------------------
     # SUMMARY MANAGEMENT
