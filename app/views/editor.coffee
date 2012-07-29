@@ -1534,49 +1534,62 @@ class exports.CNEditor extends Backbone.View
     # Add html code to the history
     ###
     _addHistory : () ->
-        # mark selection
+        # 0 - mark selection
         savedSel = rangy.saveSelection(rangy.dom.getIframeWindow @editorIframe)
         @_history.historySelect.push savedSel
-        # add the html content to history with markers
+        
+        # 1- add the html content with markers to the history
         @_history.history.push @editorBody$.html()
-        # update the index
+        rangy.removeMarkers(savedSel)
+
+        # 2 - update the index
         @_history.index = @_history.history.length-1
+        
         # fire an event indicating history has changed
         $(@editorIframe).trigger jQuery.Event("onHistoryChanged")
+        
     ###
     # Undo the previous action
     ###
     unDo : () ->
         # if there is an action to undo
         if @_history.index > 0
-            # if we are in an unsaved state
+            
+            # 0 - if we are in an unsaved state
             if @_history.index == @_history.history.length-1
                 # save current state
                 @_addHistory()
                 # re-evaluate index
                 @_history.index -= 1
-            # restore html
+                
+            # 1 - restore html
             @editorBody$.html @_history.history[@_history.index]
-            # restore selection
+            
+            # 2 - restore selection
             savedSel = @_history.historySelect[@_history.index]
             rangy.restoreSelection(savedSel)
-            # update the index
+            savedSel.restored = false
+            
+            # 3 - update the index
             @_history.index -= 1
         
     ###
     # Redo a undo-ed action
     ###
     reDo : () ->
-        
         # if there is an action to redo
         if @_history.index < (@_history.history.length-2)
-            # update the index
+            
+            # 0 - update the index
             @_history.index += 1
-            # restore html
+            
+            # 1 - restore html
             @editorBody$.html @_history.history[@_history.index+1]
-            # restore selection
+            
+            # 2 - restore selection
             savedSel = @_history.historySelect[@_history.index+1]
             rangy.restoreSelection(savedSel)
+            savedSel.restored = false
 
     ### ------------------------------------------------------------------------
     # SUMMARY MANAGEMENT
@@ -1610,7 +1623,6 @@ class exports.CNEditor extends Backbone.View
     #  DECORATION FUNCTIONS (bold/italic/underlined/quote)
     #  TODO
     ###
-
     
     
     ### ------------------------------------------------------------------------
