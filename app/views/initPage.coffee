@@ -69,9 +69,8 @@ exports.initPage =  ()->
             while i<l
                 console.log "Range N°#{i}"
                 range = sel.getRangeAt(i)
-                console.log "offsets:  start=#{range.startOffset}  -  end=#{range.endOffset}"
-                console.log range.startContainer
-                console.log range.endContainer
+                console.log "containers : #{range.startContainer.nodeName} #{range.endContainer.nodeName}"
+                console.log "content : #{range.toHtml()}"
                 i++
                 
         # Allows user to load a file in the Cozy format
@@ -85,6 +84,7 @@ exports.initPage =  ()->
             editorCtrler.replaceCSS( e.currentTarget.value )
 
         # Buttons for the editor
+        # Buttons should probably give back the focus to the editor's iframe
         $("#indentBtn").on "click", () ->
             editorCtrler.tab()
         $("#unIndentBtn").on "click", () ->
@@ -95,7 +95,11 @@ exports.initPage =  ()->
             editorCtrler.titleList()
         $("#clearBtn").on "click", () ->
             editorCtrler.deleteContent()
-
+        $("#undoBtn").on "click", () ->
+            editorCtrler.unDo()
+        $("#redoBtn").on "click", () ->
+            editorCtrler.reDo()
+            
         #### -------------------------------------------------------------------
         # Special buttons (to be removed later)
         #  > tests the code structure

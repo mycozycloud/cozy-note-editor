@@ -45,18 +45,18 @@ class exports.CNEditor extends Backbone.View
             editor_css$  = editor_head$.html('<link href="stylesheets/app.css" 
                                                rel="stylesheet">')
             # 2- set the properties of the editor
-            @editorBody$  = editorBody$
-            @editorIframe = iframe$[0]
-            @_lines       = {}
-            @newPosition  = true
-            @_highestId   = 0
-            @_deepest     = 1
-            @_firstLine   = null
-            @_history     =
+            @editorBody$  = editorBody$  # label <body> of the iframe
+            @editorIframe = iframe$[0]   # <iframe>
+            @_lines       = {}           # contains every line
+            @newPosition  = true         # true only if cursor has moved
+            @_highestId   = 0            # last inserted line identifier
+            @_deepest     = 1            # current maximum indentation
+            @_firstLine   = null         # pointer to the first line
+            @_history     =              # for history management
                 index        : 0
                 history      : [null]
                 historySelect: [null]
-            @_lastKey     = null
+            @_lastKey     = null         # last pressed key (avoid duplication)
             # 3- initialize event listeners
             editorBody$.prop( '__editorCtl', this)
             editorBody$.on 'keypress' , @_keyPressListener
@@ -108,7 +108,7 @@ class exports.CNEditor extends Backbone.View
     ###
     deleteContent : () ->
         @editorBody$.html '<div id="CNID_1" class="Tu-1"><span></span><br></div>'
-
+        # update the controler
         @_readHtml()
         #@_buildSummary()
     
@@ -117,11 +117,7 @@ class exports.CNEditor extends Backbone.View
     # Returns a markdown string representing the editor content
     ###
     getEditorContent : () ->
-        # Eliminate rangy markers from the saved text
-        cleanContent = @editorBody$.clone()
-        cleanContent.children("span .rangySelectionBoundary").remove()
-        cozyContent = cleanContent.html()
-        alert cozyContent 
+        cozyContent = @editorBody$.html()
         return @_cozy2md cozyContent
         
     ### ------------------------------------------------------------------------
@@ -264,7 +260,7 @@ class exports.CNEditor extends Backbone.View
                     when 121 then keyStrokesCode = "Y"
                     when 122 then keyStrokesCode = "Z"
                     #else  keyStrokesCode = e.which
-                    else  keyStrokesCode = "other"
+                    else keyStrokesCode = "other"
         shortcut = metaKeyStrokesCode + '-' + keyStrokesCode
         
         # a,s,c,y,z alone are simple characters
@@ -289,7 +285,7 @@ class exports.CNEditor extends Backbone.View
                               "home"] and 
                               shortcut not in ['CtrlShift-down','CtrlShift-up']
             @newPosition = true
-        
+         
         #if there was no keyboard move action but the previous action was a move
         # then "normalize" the selection
         else
@@ -804,82 +800,79 @@ class exports.CNEditor extends Backbone.View
 
     ### ------------------------------------------------------------------------
     # shift + tab keypress
-    #   e = event
+    #   myRange = if defined, refers to a specific region to untab
     ###
-    shiftTab : () ->
+    shiftTab : (myRange) ->
 
         # 1- Variables
-        sel                = rangy.getIframeSelection(@editorIframe)
-
-        l = sel.rangeCount
-        if l == 0
-            return
-        c = 0
-        while c < l
-            range              = sel.getRangeAt(c)
-            startDiv           = range.startContainer
-            endDiv             = range.endContainer
-            initialStartOffset = range.startOffset
-            initialEndOffset   = range.endOffset
+        if myRange?
+            range = myRange
+        else
+            sel   = rangy.getIframeSelection(@editorIframe)
+            range = sel.getRangeAt(0)
+            
+        startDiv           = range.startContainer
+        endDiv             = range.endContainer
+        initialStartOffset = range.startOffset
+        initialEndOffset   = range.endOffset
         
-            # 2- find first and last div corresponding to the 1rst and
-            #    last selected lines
-            if startDiv.nodeName != "DIV"
-                startDiv = $(startDiv).parents("div")[0]
-            if endDiv.nodeName != "DIV"
-                endDiv = $(endDiv).parents("div")[0]
-            endLineID = endDiv.id
+        # 2- find first and last div corresponding to the 1rst and
+        #    last selected lines
+        if startDiv.nodeName != "DIV"
+            startDiv = $(startDiv).parents("div")[0]
+        if endDiv.nodeName != "DIV"
+            endDiv = $(endDiv).parents("div")[0]
+        endLineID = endDiv.id
         
-            # 3- loop on each line between the firts and last line selected
-            line = @_lines[startDiv.id]
-            loop
-                switch line.lineType
-                    when 'Tu','Th','To'
-                        # find the closest parent to choose the new lineType.
-                        parent = line.linePrev
-                        while parent != null and parent.lineDepthAbs >= line.lineDepthAbs
-                            parent = parent.linePrev
-                        if parent != null
-                            isTabAllowed   = true
-                            lineTypeTarget = parent.lineType
-                            lineTypeTarget = "L" + lineTypeTarget.charAt(1)
-                            line.lineDepthAbs -= 1
-                            line.lineDepthRel -= parent.lineDepthRel
-                            # if lineNext is a Lx, then it must be turned in a Tx
-                            if line.lineNext? and line.lineNext.lineType[0]=='L'
-                                nextL = line.lineNext
-                                nextL.lineType='T'+nextL.lineType[1] 
-                                nextL.line$.prop('class',"#{nextL.lineType}-#{nextL.lineDepthAbs}")
-                        else 
-                            isTabAllowed = false
-                    when 'Lh'
-                        isTabAllowed=true
-                        lineTypeTarget     = 'Th'
-                    when 'Lu'
-                        isTabAllowed=true
-                        lineTypeTarget     = 'Tu'
-                    when 'Lo'
-                        isTabAllowed=true
-                        lineTypeTarget     = 'To'
-                if isTabAllowed
-                    line.line$.prop("class","#{lineTypeTarget}-#{line.lineDepthAbs}")
-                    line.lineType = lineTypeTarget
-                if line.lineID == endDiv.id
-                    break
-                else 
-                    line = line.lineNext
-            c++
+        # 3- loop on each line between the firts and last line selected
+        line = @_lines[startDiv.id]
+        loop
+            switch line.lineType
+                when 'Tu','Th','To'
+                    # find the closest parent to choose the new lineType.
+                    parent = line.linePrev
+                    while parent != null and parent.lineDepthAbs >= line.lineDepthAbs
+                        parent = parent.linePrev
+                    if parent != null
+                        isTabAllowed   = true
+                        lineTypeTarget = parent.lineType
+                        lineTypeTarget = "L" + lineTypeTarget.charAt(1)
+                        line.lineDepthAbs -= 1
+                        line.lineDepthRel -= parent.lineDepthRel
+                        # if lineNext is a Lx, then it must be turned in a Tx
+                        if line.lineNext? and line.lineNext.lineType[0]=='L'
+                            nextL = line.lineNext
+                            nextL.lineType='T'+nextL.lineType[1] 
+                            nextL.line$.prop('class',"#{nextL.lineType}-#{nextL.lineDepthAbs}")
+                    else 
+                        isTabAllowed = false
+                when 'Lh'
+                    isTabAllowed=true
+                    lineTypeTarget     = 'Th'
+                when 'Lu'
+                    isTabAllowed=true
+                    lineTypeTarget     = 'Tu'
+                when 'Lo'
+                    isTabAllowed=true
+                    lineTypeTarget     = 'To'
+            if isTabAllowed
+                line.line$.prop("class","#{lineTypeTarget}-#{line.lineDepthAbs}")
+                line.lineType = lineTypeTarget
+            if line.lineID == endDiv.id
+                break
+            else 
+                line = line.lineNext
 
     ### ------------------------------------------------------------------------
     # return keypress
     #   e = event
     ###
-    _return : ()->
+    _return : () ->
         @_findLinesAndIsStartIsEnd()
         currSel   = this.currentSel
         startLine = currSel.startLine
         endLine   = currSel.endLine
-        
+
         # 1- Delete the selections so that the selection is collapsed
         if currSel.range.collapsed
             
@@ -1025,52 +1018,54 @@ class exports.CNEditor extends Backbone.View
 
 
     ### ------------------------------------------------------------------------
-    #   delete the user multi line selection
+    # Delete the user multi line selection
     #
-    #   prerequisite : at least 2 lines must be selected
-    # 
-    #   parameters :
-    #        :
-    # 
+    # prerequisite : at least 2 lines must be selected
+    # parameters : startLine = first line to be deleted
+    #              endLine   = last line to be deleted
     ###
     _deleteMultiLinesSelections : (startLine, endLine) ->
-        # if startLine and endLine are specified, a special deletion occurs.
-        # (see the code below: we actually try to make an inheritance)
+        # If startLine and endLine are specified, lines included between these
+        # two are removed. This is useful when making line's depth inheritance
         
         # true when the caret needs to be repositioned after deletion
         replaceCaret = true
-        
-        # 0- variables
+
+        # 0 - variables
         if startLine != undefined
             replaceCaret = false
             range = rangy.createRange()
-            # special case of the second line when moved up.
-            # todo: restore the appropriate id to the first line
+            
+            # If the very first line must be deleted
             if startLine == null
                 startLine = endLine
                 endLine = endLine.lineNext
                 @_putStartOnStart(range, startLine.line$[0].firstElementChild)
+                endLine.line$.prepend '<span></span>'
                 @_putEndOnStart(range, endLine.line$[0].firstElementChild)
             else
-                @_putStartOnEnd(range, startLine.line$[0].lastElementChild.previousElementSibling)
-                @_putEndOnEnd(range, endLine.line$[0].lastElementChild.previousElementSibling)
+                startNode = startLine.line$[0].lastElementChild.previousElementSibling
+                endNode = endLine.line$[0].lastElementChild.previousElementSibling
+                range.setStartAfter(startNode,0)
+                range.setEndAfter(endNode,0)
         else
             @_findLines()
             range = this.currentSel.range
             startContainer = range.startContainer
-            startOffset = range.startOffset
-            startLine = this.currentSel.startLine
-            endLine = this.currentSel.endLine
-        endLineDepthAbs = endLine.lineDepthAbs
+            startOffset    = range.startOffset
+            startLine      = this.currentSel.startLine
+            endLine        = this.currentSel.endLine
+            
+        endLineDepthAbs   = endLine.lineDepthAbs
         startLineDepthAbs = startLine.lineDepthAbs
-        deltaDepth = endLineDepthAbs - startLineDepthAbs
+        deltaDepth        = endLineDepthAbs - startLineDepthAbs
 
         # 1- copy the end of endLine in a fragment
         range4fragment = rangy.createRangyRange()
         range4fragment.setStart(range.endContainer, range.endOffset)
         range4fragment.setEndAfter(endLine.line$[0].lastChild)
         endOfLineFragment = range4fragment.cloneContents()
-        
+
         # 2- adapt the type of endLine and of its children to startLine 
         # the only useful case is when endLine must be changed from Th to Tu or To
         if endLine.lineType[1] == 'h' and startLine.lineType[1] != 'h'
@@ -1078,10 +1073,10 @@ class exports.CNEditor extends Backbone.View
                 endLine.lineType = 'T' + endLine.lineType[1]
                 endLine.line$.prop("class","#{endLine.lineType}-#{endLine.lineDepthAbs}")
             @markerList(endLine)
-            
+
         # 3- delete lines
         range.deleteContents()
-        
+
         # 4- append fragment and delete endLine
         if startLine.line$[0].lastChild.nodeName == 'BR'
             startLine.line$[0].removeChild( startLine.line$[0].lastChild)
@@ -1106,7 +1101,7 @@ class exports.CNEditor extends Backbone.View
             endLine.lineNext.linePrev=startLine
         endLine.line$.remove()
         delete this._lines[endLine.lineID]
-        
+
         # 5- adapt the depth of the children and following siblings of end line
         #    in case the depth delta between start and end line is
         #    greater than 0, then the structure is not correct : we reduce
@@ -1120,7 +1115,7 @@ class exports.CNEditor extends Backbone.View
                     line.lineDepthAbs = newDepth
                     line.line$.prop("class","#{line.lineType}-#{newDepth}")
                     line = line.lineNext
-        
+                    
         # 6- adapt the type of the first line after the children and siblings of
         #    end line. Its previous sibling or parent might have been deleted, 
         #    we then must find its new one in order to adapt its type.
@@ -1253,7 +1248,7 @@ class exports.CNEditor extends Backbone.View
             else   
                 endLine = @_lines[ $(endContainer).parents("div")[0].id ]
             
-            # 3- find startLine 
+            # 3- find startLine
             if startContainer.nodeName == 'DIV'
                 # startContainer refers to a div of a line
                 startLine = @_lines[ startContainer.id ]
@@ -1301,14 +1296,14 @@ class exports.CNEditor extends Backbone.View
             
             # 2- find endLine and the rangeIsEndLine
             # endContainer refers to a div of a line
-            if endContainer.id? and endContainer.id.substr(0,5) == 'CNID_'  
+            if endContainer.id? and endContainer.id.substr(0,5) == 'CNID_'
                 endLine = @_lines[ endContainer.id ]
-                # rangeIsEndLine if endOffset points on the last node of the div or on 
-                # the one before the last wich is a <br>
+                # rangeIsEndLine if endOffset points on the last node of the div
+                # or on the one before the last which is a <br>
                 rangeIsEndLine = ( endContainer.children.length-1==initialEndOffset ) or
                                  (endContainer.children[initialEndOffset].nodeName=="BR")
             # means the range ends inside a div (span, textNode...)
-            else   
+            else
                 endLine = @_lines[ $(endContainer).parents("div")[0].id ]
                 parentEndContainer = endContainer
                 # rangeIsEndLine if the selection is at the end of the
@@ -1321,7 +1316,7 @@ class exports.CNEditor extends Backbone.View
                     rangeIsEndLine = ( initialEndOffset == parentEndContainer.textContent.length )
                 else
                     nextSibling = parentEndContainer.nextSibling
-                    rangeIsEndLine = (nextSibling == null or nextSibling.nodeName=='BR')
+                    rangeIsEndLine = (nextSibling == null or (initialEndOffset==parentEndContainer.textContent.length and nextSibling.nodeName=='BR'))
                 parentEndContainer = endContainer.parentNode
                 while rangeIsEndLine and parentEndContainer.nodeName != "DIV"
                     nextSibling = parentEndContainer.nextSibling
@@ -1403,27 +1398,23 @@ class exports.CNEditor extends Backbone.View
     # LINES MOTION MANAGEMENT
     # 
     # Functions to perform the motion of an entire block of lines
-    # TODO: bug: wrong selection restorations
-    #            1. when moving a line down
-    #            2. when moving the second line up
+    # TODO: bug: wrong selection restorations when moving the second line up
     # TODO: correct re-insertion of the line swapped with the block
     ####
     _moveLinesDown : () ->
-        # 0-set variables with informations on the selected lines
-        @_findLines()
         
+        # 0 - Set variables with informations on the selected lines
+        @_findLines()
         sel = this.currentSel
-        initRange = rangy.createRange()
-        initRange = sel.range
- 
         lineStart = sel.startLine
         lineEnd   = sel.endLine
         linePrev  = lineStart.linePrev
         lineNext  = lineEnd.lineNext
-        
+            
+        # if it isnt the last line
         if lineNext != null
             
-            # 1-save lineNext
+            # 1 - save lineNext
             cloneLine =
                 line$        : lineNext.line$.clone()
                 lineID       : lineNext.lineID
@@ -1432,16 +1423,18 @@ class exports.CNEditor extends Backbone.View
                 lineDepthRel : lineNext.lineDepthRel
                 linePrev     : lineNext.linePrev
                 lineNext     : lineNext.lineNext
+
+            savedSel = rangy.saveSelection(rangy.dom.getIframeWindow @editorIframe)
                 
-            # 2-Delete the lowerline content then restore initial selection
+            # 2 - Delete the lowerline content then restore initial selection
             @_deleteMultiLinesSelections(lineEnd, lineNext)
-            sel.sel.setSingleRange(initRange)
+            rangy.restoreSelection(savedSel)
             
-            # 3-Restore the lowerline
+            # 3 - Restore the lowerline
             lineNext = cloneLine
             @_lines[lineNext.lineID] = lineNext
             
-            # 4-Modify the linking
+            # 4 - Modify the linking
             lineNext.linePrev = linePrev
             lineStart.linePrev = lineNext
             if lineNext.lineNext != null
@@ -1451,35 +1444,73 @@ class exports.CNEditor extends Backbone.View
             if linePrev != null
                 linePrev.lineNext = lineNext
                 
-            # 5-Modify the DOM
+            # 5 - Modify the DOM
             lineStart.line$.before(lineNext.line$)
-
+            
             # 6-Re-insert properly lineNext before the start of the moved block
-            # if lineStart.lineDepthAbs < lineNext.lineDeptAbs
-                # lineNext.lineDepthRel = lineStart.lineDepthRel
-                # lineNext.lineDepthAbs = lineStart.lineDepthAbs
-                # lineNext.line$.attr('class', "#{lineNext.lineType}-#{lineNext.lineDepthAbs}")   
-
+            #6.1 if the swapped line is less indented than the block's prev line
+            if lineNext.lineDepthAbs <= linePrev.lineDepthAbs
+                # create a range to select the block to untab (several times)
+                line = lineNext
+                while (line.lineNext!=null and line.lineNext.lineDepthAbs>lineNext.lineDepthAbs)
+                    line = line.lineNext
+                if line.lineNext != null
+                    line = line.lineNext
+                myRange = rangy.createRange()
+                myRange.setStart(lineNext.lineNext.line$[0], 0)
+                myRange.setEnd(line.line$[0], 0)
+                # Now we untab the block selected.
+                numOfUntab=lineNext.lineNext.lineDepthAbs-lineStart.lineDepthAbs
+                if lineNext.lineNext.lineType[0]=='T'
+                    # if linePrev is a 'T' and a 'T' follows, one untab less
+                    if lineStart.lineType[0]=='T'
+                        numOfUntab -= 1
+                    # if linePrev is a 'L' and a 'T' follows, one untab more
+                    else
+                        numOfUntab += 1
+                
+                while numOfUntab >= 0
+                    @shiftTab(myRange)
+                    numOfUntab -= 1
+                    
+            #6.2 if the swapped line is more indented than the block's prev line
+            else
+                # untab the line (several times)
+                myRange = rangy.createRange()
+                myRange.setStart(lineNext.line$[0], 0)
+                myRange.setEnd(lineNext.line$[0], 0)
+                numOfUntab = lineStart.lineDepthAbs - lineNext.lineDepthAbs
+                
+                if lineStart.lineType[0]=='T'
+                    # if lineEnd is a 'T' and a 'T' follows, one untab less
+                    if linePrev.lineType[0]=='T'
+                        numOfUntab -= 1
+                    # if lineEnd is a 'L' and a 'T' follows, one untab more
+                    else
+                        numOfUntab += 1
+                
+                while numOfUntab >= 0
+                    @shiftTab(myRange)
+                    numOfUntab -= 1 
 
 
     _moveLinesUp : () ->
-        #0- Set variables with informations on the selected lines
+        
+        # 0 - Set variables with informations on the selected lines
         @_findLines()
-        
         sel = this.currentSel
-        initRange = rangy.createRange()
-        initRange = sel.range
-        
         lineStart = sel.startLine
         lineEnd   = sel.endLine
         linePrev  = lineStart.linePrev
         lineNext  = lineEnd.lineNext
-        
+ 
+        # if it isnt the first line
         if linePrev != null
-            # 0-set boolean indicating if we deal with the second line
+            
+            # 0 - set boolean indicating if we are treating the second line
             secondL = (linePrev.linePrev == null)
                         
-            # 1-save linePrev
+            # 1 - save linePrev
             cloneLine =
                 line$        : linePrev.line$.clone()
                 lineID       : linePrev.lineID
@@ -1488,20 +1519,28 @@ class exports.CNEditor extends Backbone.View
                 lineDepthRel : linePrev.lineDepthRel
                 linePrev     : linePrev.linePrev
                 lineNext     : linePrev.lineNext
-                
-            # 2-Delete the upperline content then restore initial selection
+
+            savedSel = rangy.saveSelection(rangy.dom.getIframeWindow @editorIframe)
+
+            # 2 - Delete the upperline content then restore initial selection
             @_deleteMultiLinesSelections(linePrev.linePrev, linePrev)
-            sel.sel.setSingleRange(initRange)
-            
-            # 3-Restore the upperline
-            # 3.1-if secondL is true, line objects must be fixed
+            rangy.restoreSelection(savedSel)
+
+            # 3 - Restore the upperline
+            # 3.1 - if secondL is true, line objects must be fixed
             if secondL
+                # remove the hidden element inserted by deleteMultiLines
+                $(linePrev.line$[0].firstElementChild).remove()
+                # add the missing BR
+                linePrev.line$.append '<br>'
                 lineStart.line$ = linePrev.line$
                 lineStart.line$.attr('id', lineStart.lineID)
+                @_lines[lineStart.lineID] = lineStart
+                
             linePrev = cloneLine
             @_lines[linePrev.lineID] = linePrev
-            
-            # 4-Modify the linking
+
+            # 4 - Modify the linking
             linePrev.lineNext = lineNext
             lineEnd.lineNext = linePrev
             if linePrev.linePrev != null
@@ -1511,28 +1550,65 @@ class exports.CNEditor extends Backbone.View
             if lineNext != null
                 lineNext.linePrev = linePrev
                 
-            # 5-Modify the DOM
+            # 5 - Modify the DOM
             lineEnd.line$.after(linePrev.line$)
-            
-            # 6-Re-insert properly linePrev after the end of the moved block
-            # if lineEnd.lineType[0] == 'T'
-                # linePrev.lineType = lineEnd.lineType
-                # linePrev.lineDepthRel = lineEnd.lineDepthRel
-                # linePrev.lineDepthAbs = lineEnd.lineDepthAbs
-                # linePrev.line$.attr('class', lineEnd.line$.attr('class'))
-            # if linePrev.lineDepthAbs > lineEnd.lineDepthAbs
-                # linePrev.lineDepthRel = lineEnd.lineDepthRel
-                # linePrev.lineDepthAbs = lineEnd.lineDepthAbs
-                # linePrev.line$.attr('class', "#{linePrev.lineType}-#{linePrev.lineDepthAbs}")
 
-
+            # 6 - Re-insert properly linePrev after the end of the moved block
+            #6.1 if the swapped line is less indented than the block's last line
+            if linePrev.lineDepthAbs <= lineEnd.lineDepthAbs
+                # create a range to select the block to untab (several times)
+                line = linePrev
+                while (line.lineNext!=null and line.lineNext.lineDepthAbs>linePrev.lineDepthAbs)
+                    line = line.lineNext
+                if line.lineNext != null
+                    line = line.lineNext
+                myRange = rangy.createRange()
+                myRange.setStart(linePrev.lineNext.line$[0], 0)
+                myRange.setEnd(line.line$[0], 0)
+                # Now we untab the block selected.
+                numOfUntab = linePrev.lineNext.lineDepthAbs - linePrev.lineDepthAbs
+                if linePrev.lineNext.lineType[0]=='T'
+                    # if linePrev is a 'T' and a 'T' follows, one untab less
+                    if linePrev.lineType[0]=='T'
+                        numOfUntab -= 1
+                    # if linePrev is a 'L' and a 'T' follows, one untab more
+                    else
+                        numOfUntab += 1
+                
+                while numOfUntab >= 0
+                    @shiftTab(myRange)
+                    numOfUntab -= 1
+                    
+            #6.2 if the swapped line is more indented than the block's last line
+            else
+                # untab the line (several times)
+                myRange = rangy.createRange()
+                myRange.setStart(linePrev.line$[0], 0)
+                myRange.setEnd(linePrev.line$[0], 0)
+                numOfUntab = linePrev.lineDepthAbs - lineEnd.lineDepthAbs
+                
+                if linePrev.lineType[0]=='T'
+                    # if lineEnd is a 'T' and a 'T' follows, one untab less
+                    if lineEnd.lineType[0]=='T'
+                        numOfUntab -= 1
+                    # if lineEnd is a 'L' and a 'T' follows, one untab more
+                    else
+                        numOfUntab += 1
+                
+                while numOfUntab >= 0
+                    @shiftTab(myRange)
+                    numOfUntab -= 1
 
     ### ------------------------------------------------------------------------
     #  HISTORY MANAGEMENT:
-    # 1. reDo can only be called after some unDo calls
-    # 2. if an element is added to the history, reDo cannot be called
-    # Add html code to the history
+    # 1. _addHistory (Add html code and selection markers to the history)
+    # 2. undoPossible (Return true only if unDo can be called)
+    # 3. redoPossible (Return true only if reDo can be called)
+    # 4. unDo (Undo the previous action)
+    # 5. reDo ( Redo a undo-ed action)
     ###
+    
+    # Add html code and selection markers to the history
     _addHistory : () ->
         # 0 - mark selection
         savedSel = rangy.saveSelection(rangy.dom.getIframeWindow @editorIframe)
@@ -1547,13 +1623,20 @@ class exports.CNEditor extends Backbone.View
         
         # fire an event indicating history has changed
         $(@editorIframe).trigger jQuery.Event("onHistoryChanged")
+
+
+    # Return true only if unDo can be called
+    undoPossible : () ->
+        return (@_history.index > 0)
+
+    # Return true only if reDo can be called
+    redoPossible : () ->
+        return (@_history.index < @_history.history.length-2)
         
-    ###
     # Undo the previous action
-    ###
     unDo : () ->
         # if there is an action to undo
-        if @_history.index > 0
+        if @undoPossible()
             
             # 0 - if we are in an unsaved state
             if @_history.index == @_history.history.length-1
@@ -1569,16 +1652,20 @@ class exports.CNEditor extends Backbone.View
             savedSel = @_history.historySelect[@_history.index]
             rangy.restoreSelection(savedSel)
             savedSel.restored = false
+
+            # 7- position caret
+            # range4caret = rangy.createRange()
+            # range4caret.collapseToPoint(startContainer, startOffset)
+            # this.currentSel.sel.setSingleRange(range4caret)
+            # this.currentSel = null
             
             # 3 - update the index
             @_history.index -= 1
         
-    ###
     # Redo a undo-ed action
-    ###
     reDo : () ->
         # if there is an action to redo
-        if @_history.index < (@_history.history.length-2)
+        if @redoPossible()
             
             # 0 - update the index
             @_history.index += 1
@@ -1627,9 +1714,14 @@ class exports.CNEditor extends Backbone.View
     
     ### ------------------------------------------------------------------------
     #  MARKUP LANGUAGE CONVERTERS
-    # Reads a string that represents html code in our cozy format and turns it
-    # into a string in markdown format
+    # _cozy2md (Read a string of editor html code format and turns it into a
+    #           string in markdown format)
+    # _md2cozy (Read a string of html code given by showdown and turns it into
+    #           a string of editor html code)
     ###
+    
+    # Read a string of editor html code format and turns it into a string in
+    #  markdown format
     _cozy2md : (text) ->
         
         # Writes the string into a jQuery object
@@ -1725,8 +1817,8 @@ class exports.CNEditor extends Backbone.View
         return markCode
 
 
-    # Reads a string of html code given by showdown
-    # and turns it into our proper cozy html code.
+    # Read a string of html code given by showdown and turns it into a string
+    # of editor html code
     _md2cozy: (text) ->
 
         conv = new Showdown.converter()
