@@ -56,6 +56,7 @@ class exports.CNEditor extends Backbone.View
                 index        : 0
                 history      : [null]
                 historySelect: [null]
+                historyScroll: [null]
             @_lastKey     = null         # last pressed key (avoid duplication)
             
             @_sandBox = document.createElement('div')
@@ -1625,6 +1626,21 @@ class exports.CNEditor extends Backbone.View
         # 0 - mark selection
         savedSel = rangy.saveSelection(rangy.dom.getIframeWindow @editorIframe)
         @_history.historySelect.push savedSel
+
+        # TODO: Following code does not work. Indeed it tries to get the
+        #      position of @editorIframe.contentWindow's scrollbar but what we
+        #      need is the position of the scrollbar which appears INSIDE the
+        #      iframe's body. The code below always returns 0 because the window
+        #      of the iframe actually never scrolls: no scrollbar is associated
+        #      to this window.
+        # -> solutions? set our own scrollbar's system
+        #               find out how to get the browser's auto scrollbars
+        #                 positions inside a DOM element (textarea for ex.)
+        savedScroll =
+            xcoord: @editorIframe.contentWindow.scrollX
+            ycoord: @editorIframe.contentWindow.scrollY
+            
+        @_history.historyScroll.push savedScroll
         
         # 1- add the html content with markers to the history
         @_history.history.push @editorBody$.html()
@@ -1665,6 +1681,13 @@ class exports.CNEditor extends Backbone.View
             rangy.restoreSelection(savedSel)
             savedSel.restored = false
 
+            
+            xcoord = @_history.historyScroll[@_history.index].xcoord
+            ycoord = @_history.historyScroll[@_history.index].ycoord
+
+            
+            @editorIframe.contentWindow.scrollTo(xcoord, ycoord)
+
             # 7- position caret
             # range4caret = rangy.createRange()
             # range4caret.collapseToPoint(startContainer, startOffset)
@@ -1689,6 +1712,13 @@ class exports.CNEditor extends Backbone.View
             savedSel = @_history.historySelect[@_history.index+1]
             rangy.restoreSelection(savedSel)
             savedSel.restored = false
+
+
+            xcoord = @_history.historyScroll[@_history.index+1].xcoord
+            ycoord = @_history.historyScroll[@_history.index+1].ycoord
+            @editorIframe.contentWindow.scrollTo(xcoord, ycoord)
+            
+
 
     ### ------------------------------------------------------------------------
     # SUMMARY MANAGEMENT
@@ -1725,10 +1755,12 @@ class exports.CNEditor extends Backbone.View
     
     ### ------------------------------------------------------------------------
     #  PASTE MANAGEMENT
-    # move the cursor into an invisible sandbox, then redirect pasted content
-    # there. Pasted content is sanitized and adapted to our format, then
-    # selection is restored and cleaned content is injected right behind the
-    # caret position 
+    # 0 - save selection
+    # 1 - move the cursor into an invisible sandbox
+    # 2 - redirect pasted content in this sandox
+    # 3 - sanitize and adapt pasted content to the editor's format.....TODO
+    # 4 - restore selection
+    # 5 - insert cleaned content is behind the cursor position.........TODO
     ###
     paste : (event) ->
         
@@ -1743,10 +1775,10 @@ class exports.CNEditor extends Backbone.View
         
         # check whether the browser is a Webkit or not
         if event and event.clipboardData and event.clipboardData.getData
-            # Webkit: 1-get data from clipboard
-            #         2-put data in the sandbox
-            #         3-clean the sandbox
-            #         4-cancel event (otherwise it pastes twice)
+            # Webkit: 1 - get data from clipboard
+            #         2 - put data in the sandbox
+            #         3 - clean the sandbox
+            #         4 - cancel event (otherwise it pastes twice)
             if event.clipboardData.types == "text/html"
                 @_sandBox.innerHTML = event.clipboardData.getData('text/html');
             else if event.clipboardData.types == "text/plain"
@@ -1759,9 +1791,9 @@ class exports.CNEditor extends Backbone.View
                 event.preventDefault()
             return false
         else
-            # not a Webkit: 1-empty the sandBox
-            #               2-paste in sandBox
-            #               3-cleanup the sandBox
+            # not a Webkit: 1 - empty the sandBox
+            #               2 - paste in sandBox
+            #               3 - cleanup the sandBox
             @_sandBox.innerHTML = ""
             @_waitForPasteData(@_sandBox, @_processPaste, savedSel)
             return true
