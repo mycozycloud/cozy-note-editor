@@ -59,11 +59,6 @@ class exports.CNEditor extends Backbone.View
                 historyScroll: [null]
             @_lastKey     = null         # last pressed key (avoid duplication)
             
-            @_sandBox = document.createElement('div')
-            @_sandBox.setAttribute('contenteditable', true)
-            @_sandBox.setAttribute('display', "none")
-            @editorIframe.appendChild @_sandBox
-            
             # 3- initialize event listeners
             editorBody$.prop( '__editorCtl', this)
             editorBody$.on 'keypress' , @_keyPressListener
@@ -74,6 +69,7 @@ class exports.CNEditor extends Backbone.View
             # editorBody$.on 'keypress', () ->
                 # $(@editorIframe).trigger jQuery.Event("onKeyPress")
             editorBody$.on 'paste' , (e) =>
+                console.log "pasting"
                 @paste(e)
             # 4- return a ref to the editor's controler
             callBack.call(this)
@@ -368,16 +364,14 @@ class exports.CNEditor extends Backbone.View
             
             # PASTE (Ctrl + v)                  
             when "Ctrl-V"
-                console.log "pasting..."
+                true
                 #@_updateDeepest()
-               
             
             # SAVE (Ctrl + s)                  
             when "Ctrl-S"
                 # TODO
                 # console.log "TODO : SAVE"
                 e.preventDefault()
-
 
             # UNDO (Ctrl + z)
             when "Ctrl-Z"
@@ -1688,7 +1682,7 @@ class exports.CNEditor extends Backbone.View
             
             @editorIframe.contentWindow.scrollTo(xcoord, ycoord)
 
-            # 7- position caret
+            # 7- position caret?
             # range4caret = rangy.createRange()
             # range4caret.collapseToPoint(startContainer, startOffset)
             # this.currentSel.sel.setSingleRange(range4caret)
@@ -1752,6 +1746,7 @@ class exports.CNEditor extends Backbone.View
     #  DECORATION FUNCTIONS (bold/italic/underlined/quote)
     #  TODO
     ###
+
     
     ### ------------------------------------------------------------------------
     #  PASTE MANAGEMENT
@@ -1762,16 +1757,33 @@ class exports.CNEditor extends Backbone.View
     # 4 - restore selection
     # 5 - insert cleaned content is behind the cursor position.........TODO
     ###
+    _initClipBoard : () ->
+        clipboard = @editorBody$.children("#my-clipboard-sandbox")
+        if clipboard.length == 0
+            clipboard = $ document.createElement('div')
+            clipboard.attr('contenteditable', true)
+            clipboard.attr('display', "none")
+            clipboard.html 'hello txt'
+            clipboard.attr('id', "my-clipboard-sandbox")
+            getOffTheScreen =
+                left: -1000
+                top: -1000
+            clipboard.offset getOffTheScreen
+            clipboard.prependTo @editorBody$
+        return clipboard[0]
+     
     paste : (event) ->
-        
+        # get 
+        mySandBox = @_initClipBoard()
         # save current selection
         savedSel = rangy.saveSelection(rangy.dom.getIframeWindow @editorIframe)
         
         # move carret into the sandbox
-        sel = rangy.getIframeSelection(@editorIframe)
+        
         range = rangy.createRange()
-        range.collapseToPoint(@_sandBox, 0)
-        sel.setSingleRange(range)
+        range.selectNodeContents mySandBox
+        sel = rangy.getIframeSelection @editorIframe
+        sel.setSingleRange range
         
         # check whether the browser is a Webkit or not
         if event and event.clipboardData and event.clipboardData.getData
@@ -1780,12 +1792,12 @@ class exports.CNEditor extends Backbone.View
             #         3 - clean the sandbox
             #         4 - cancel event (otherwise it pastes twice)
             if event.clipboardData.types == "text/html"
-                @_sandBox.innerHTML = event.clipboardData.getData('text/html');
+                mySandBox.innerHTML = event.clipboardData.getData('text/html');
             else if event.clipboardData.types == "text/plain"
-                @_sandBox.innerHTML = event.clipboardData.getData('text/plain');
+                mySandBox.innerHTML = event.clipboardData.getData('text/plain');
             else
-                @_sandBox.innerHTML = ""
-            @_waitForPasteData(@_sandBox, @_processPaste, savedSel)
+                mySandBox.innerHTML = ""
+            @_waitForPasteData(mySandBox, @_processPaste, savedSel)
             if event.preventDefault
                 event.stopPropagation()
                 event.preventDefault()
@@ -1794,12 +1806,12 @@ class exports.CNEditor extends Backbone.View
             # not a Webkit: 1 - empty the sandBox
             #               2 - paste in sandBox
             #               3 - cleanup the sandBox
-            @_sandBox.innerHTML = ""
-            @_waitForPasteData(@_sandBox, @_processPaste, savedSel)
+            mySandBox.innerHTML = ""
+            @_waitForPasteData(mySandBox, @_processPaste, savedSel)
             return true
             
     _waitForPasteData : (sandbox, processpaste, savedSel) ->
-        (waitforpastedata = (elem) ->
+        ( waitforpastedata = (elem) ->
             if elem.childNodes and elem.childNodes.length > 0
                 # again, something is missing during the restoration
                 rangy.restoreSelection(savedSel)
@@ -1808,7 +1820,7 @@ class exports.CNEditor extends Backbone.View
                 that = {e: elem}
                 that.callself = () ->
                     waitforpastedata that.e
-                setTimeout(that.callself, 20))(sandbox)
+                setTimeout(that.callself, 10) )(sandbox)
             
     _processPaste : (sandbox) ->
         pasteddata = sandbox.innerHTML
@@ -1923,11 +1935,14 @@ class exports.CNEditor extends Backbone.View
 
     # Read a string of html code given by showdown and turns it into a string
     # of editor html code
+    # 
+    # ATTENTION -- Bug detected: <pre><code> labels have replaced <ul><li>.....
+    #  </li>, making every line but Th-Lh disappear
     _md2cozy: (text) ->
 
         conv = new Showdown.converter()
         text = conv.makeHtml text
-    
+       
         # Writes the string into a jQuery object
         htmlCode = $(document.createElement 'ul').html text
 
