@@ -35,7 +35,7 @@ exports.initPage =  ()->
         # editor_css$  = editor_head$.html('<link href="stylesheets/app.css" rel="stylesheet">')
         
         # initialisation of the controler
-        #edCtrl = editorFactory.create( editorIframe$ )
+        # edCtrl = editorFactory.create( editorIframe$ )
 
         ### initialisation of the page
         # this.replaceContent( require('./templates/content-empty') )

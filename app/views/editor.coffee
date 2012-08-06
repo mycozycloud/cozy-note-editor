@@ -56,12 +56,8 @@ class exports.CNEditor extends Backbone.View
                 index        : 0
                 history      : [null]
                 historySelect: [null]
+                historyScroll: [null]
             @_lastKey     = null         # last pressed key (avoid duplication)
-            
-            @_sandBox = document.createElement('div')
-            @_sandBox.setAttribute('contenteditable', true)
-            @_sandBox.setAttribute('display', "none")
-            @editorIframe.appendChild @_sandBox
             
             # 3- initialize event listeners
             editorBody$.prop( '__editorCtl', this)
@@ -73,6 +69,7 @@ class exports.CNEditor extends Backbone.View
             # editorBody$.on 'keypress', () ->
                 # $(@editorIframe).trigger jQuery.Event("onKeyPress")
             editorBody$.on 'paste' , (e) =>
+                console.log "pasting"
                 @paste(e)
             # 4- return a ref to the editor's controler
             callBack.call(this)
@@ -367,16 +364,14 @@ class exports.CNEditor extends Backbone.View
             
             # PASTE (Ctrl + v)                  
             when "Ctrl-V"
-                console.log "pasting..."
+                true
                 #@_updateDeepest()
-               
             
             # SAVE (Ctrl + s)                  
             when "Ctrl-S"
                 # TODO
                 # console.log "TODO : SAVE"
                 e.preventDefault()
-
 
             # UNDO (Ctrl + z)
             when "Ctrl-Z"
@@ -393,6 +388,8 @@ class exports.CNEditor extends Backbone.View
     ### ------------------------------------------------------------------------
     # Manage deletions when suppr key is pressed
     ###
+    #
+    # TODO: bug: a suppr operated before an empty line removes the <br> label
     _suppr : (e) ->
         @_findLinesAndIsStartIsEnd()
         sel = this.currentSel
@@ -1625,6 +1622,21 @@ class exports.CNEditor extends Backbone.View
         # 0 - mark selection
         savedSel = rangy.saveSelection(rangy.dom.getIframeWindow @editorIframe)
         @_history.historySelect.push savedSel
+
+        # TODO: Following code does not work. Indeed it tries to get the
+        #      position of @editorIframe.contentWindow's scrollbar but what we
+        #      need is the position of the scrollbar which appears INSIDE the
+        #      iframe's body. The code below always returns 0 because the window
+        #      of the iframe actually never scrolls: no scrollbar is associated
+        #      to this window.
+        # -> solutions? set our own scrollbar's system
+        #               find out how to get the browser's auto scrollbars
+        #                 positions inside a DOM element (textarea for ex.)
+        savedScroll =
+            xcoord: @editorIframe.contentWindow.scrollX
+            ycoord: @editorIframe.contentWindow.scrollY
+            
+        @_history.historyScroll.push savedScroll
         
         # 1- add the html content with markers to the history
         @_history.history.push @editorBody$.html()
@@ -1665,7 +1677,14 @@ class exports.CNEditor extends Backbone.View
             rangy.restoreSelection(savedSel)
             savedSel.restored = false
 
-            # 7- position caret
+            
+            xcoord = @_history.historyScroll[@_history.index].xcoord
+            ycoord = @_history.historyScroll[@_history.index].ycoord
+
+            
+            @editorIframe.contentWindow.scrollTo(xcoord, ycoord)
+
+            # 7- position caret?
             # range4caret = rangy.createRange()
             # range4caret.collapseToPoint(startContainer, startOffset)
             # this.currentSel.sel.setSingleRange(range4caret)
@@ -1689,6 +1708,13 @@ class exports.CNEditor extends Backbone.View
             savedSel = @_history.historySelect[@_history.index+1]
             rangy.restoreSelection(savedSel)
             savedSel.restored = false
+
+
+            xcoord = @_history.historyScroll[@_history.index+1].xcoord
+            ycoord = @_history.historyScroll[@_history.index+1].ycoord
+            @editorIframe.contentWindow.scrollTo(xcoord, ycoord)
+            
+
 
     ### ------------------------------------------------------------------------
     # SUMMARY MANAGEMENT
@@ -1722,52 +1748,72 @@ class exports.CNEditor extends Backbone.View
     #  DECORATION FUNCTIONS (bold/italic/underlined/quote)
     #  TODO
     ###
+
     
     ### ------------------------------------------------------------------------
     #  PASTE MANAGEMENT
-    # move the cursor into an invisible sandbox, then redirect pasted content
-    # there. Pasted content is sanitized and adapted to our format, then
-    # selection is restored and cleaned content is injected right behind the
-    # caret position 
+    # 0 - save selection
+    # 1 - move the cursor into an invisible sandbox
+    # 2 - redirect pasted content in this sandox
+    # 3 - sanitize and adapt pasted content to the editor's format.....TODO
+    # 4 - restore selection
+    # 5 - insert cleaned content is behind the cursor position.........TODO
     ###
+    _initClipBoard : () ->
+        clipboard = @editorBody$.children("#my-clipboard-sandbox")
+        if clipboard.length == 0
+            clipboard = $ document.createElement('div')
+            clipboard.attr('contenteditable', true)
+            clipboard.attr('display', "none")
+            clipboard.html 'hello txt'
+            clipboard.attr('id', "my-clipboard-sandbox")
+            getOffTheScreen =
+                left: -1000
+                top: -1000
+            clipboard.offset getOffTheScreen
+            clipboard.prependTo @editorBody$
+        return clipboard[0]
+     
     paste : (event) ->
-        
+        # get 
+        mySandBox = @_initClipBoard()
         # save current selection
         savedSel = rangy.saveSelection(rangy.dom.getIframeWindow @editorIframe)
         
         # move carret into the sandbox
-        sel = rangy.getIframeSelection(@editorIframe)
+        
         range = rangy.createRange()
-        range.collapseToPoint(@_sandBox, 0)
-        sel.setSingleRange(range)
+        range.selectNodeContents mySandBox
+        sel = rangy.getIframeSelection @editorIframe
+        sel.setSingleRange range
         
         # check whether the browser is a Webkit or not
         if event and event.clipboardData and event.clipboardData.getData
-            # Webkit: 1-get data from clipboard
-            #         2-put data in the sandbox
-            #         3-clean the sandbox
-            #         4-cancel event (otherwise it pastes twice)
+            # Webkit: 1 - get data from clipboard
+            #         2 - put data in the sandbox
+            #         3 - clean the sandbox
+            #         4 - cancel event (otherwise it pastes twice)
             if event.clipboardData.types == "text/html"
-                @_sandBox.innerHTML = event.clipboardData.getData('text/html');
+                mySandBox.innerHTML = event.clipboardData.getData('text/html');
             else if event.clipboardData.types == "text/plain"
-                @_sandBox.innerHTML = event.clipboardData.getData('text/plain');
+                mySandBox.innerHTML = event.clipboardData.getData('text/plain');
             else
-                @_sandBox.innerHTML = ""
-            @_waitForPasteData(@_sandBox, @_processPaste, savedSel)
+                mySandBox.innerHTML = ""
+            @_waitForPasteData(mySandBox, @_processPaste, savedSel)
             if event.preventDefault
                 event.stopPropagation()
                 event.preventDefault()
             return false
         else
-            # not a Webkit: 1-empty the sandBox
-            #               2-paste in sandBox
-            #               3-cleanup the sandBox
-            @_sandBox.innerHTML = ""
-            @_waitForPasteData(@_sandBox, @_processPaste, savedSel)
+            # not a Webkit: 1 - empty the sandBox
+            #               2 - paste in sandBox
+            #               3 - cleanup the sandBox
+            mySandBox.innerHTML = ""
+            @_waitForPasteData(mySandBox, @_processPaste, savedSel)
             return true
             
     _waitForPasteData : (sandbox, processpaste, savedSel) ->
-        (waitforpastedata = (elem) ->
+        ( waitforpastedata = (elem) ->
             if elem.childNodes and elem.childNodes.length > 0
                 # again, something is missing during the restoration
                 rangy.restoreSelection(savedSel)
@@ -1776,7 +1822,7 @@ class exports.CNEditor extends Backbone.View
                 that = {e: elem}
                 that.callself = () ->
                     waitforpastedata that.e
-                setTimeout(that.callself, 20))(sandbox)
+                setTimeout(that.callself, 10) )(sandbox)
             
     _processPaste : (sandbox) ->
         pasteddata = sandbox.innerHTML
@@ -1791,7 +1837,12 @@ class exports.CNEditor extends Backbone.View
     # _md2cozy (Read a string of html code given by showdown and turns it into
     #           a string of editor html code)
     ###
-    
+
+    #
+    #  WARNING: an odd bug occurs around the 19-th line in the example :
+    #           ./templates/content-shortlines-marker
+    #           (there are some empty lines around)
+    # 
     # Read a string of editor html code format and turns it into a string in
     #  markdown format
     _cozy2md : (text) ->
@@ -1803,7 +1854,7 @@ class exports.CNEditor extends Backbone.View
         markCode = ''
 
         # current depth
-        currDepth = 1
+        currDepth = 0
         
         # converts a fragment of a line
         converter = {
@@ -1852,7 +1903,7 @@ class exports.CNEditor extends Backbone.View
             type  = tab[0]               # type of class (Tu,Lu,Th,Lh,To,Lo)
             depth = parseInt(tab[1], 10) # depth (1,2,3...)
             blanks = ''
-            i = 0
+            i = 1
             while i < depth - currDepth
                 blanks += '    '
                 i++
@@ -1892,10 +1943,10 @@ class exports.CNEditor extends Backbone.View
     # Read a string of html code given by showdown and turns it into a string
     # of editor html code
     _md2cozy: (text) ->
-
+    
         conv = new Showdown.converter()
         text = conv.makeHtml text
-    
+       
         # Writes the string into a jQuery object
         htmlCode = $(document.createElement 'ul').html text
 
