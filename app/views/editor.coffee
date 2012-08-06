@@ -1,5 +1,5 @@
-## TODO: méthode pour récupérer le js de l'éditeur nu
-## TODO: fire an event qd click sur un bouton.
+## TODO: fire an history event whenever a button is clicked
+## TODO: bug: suppr before an empty line removes the <br> label
 
 ### ------------------------------------------------------------------------
 # CLASS FOR THE COZY NOTE EDITOR
@@ -69,7 +69,7 @@ class exports.CNEditor extends Backbone.View
             # editorBody$.on 'keypress', () ->
                 # $(@editorIframe).trigger jQuery.Event("onKeyPress")
             editorBody$.on 'paste' , (e) =>
-                console.log "pasting"
+                console.log "pasting..."
                 @paste(e)
             # 4- return a ref to the editor's controler
             callBack.call(this)
