@@ -57,6 +57,12 @@ class exports.CNEditor extends Backbone.View
                 history      : [null]
                 historySelect: [null]
             @_lastKey     = null         # last pressed key (avoid duplication)
+            
+            @_sandBox = document.createElement('div')
+            @_sandBox.setAttribute('contenteditable', true)
+            @_sandBox.setAttribute('display', "none")
+            @editorIframe.appendChild @_sandBox
+            
             # 3- initialize event listeners
             editorBody$.prop( '__editorCtl', this)
             editorBody$.on 'keypress' , @_keyPressListener
@@ -66,6 +72,8 @@ class exports.CNEditor extends Backbone.View
                 # $(@editorIframe).trigger jQuery.Event("onKeyDown")
             # editorBody$.on 'keypress', () ->
                 # $(@editorIframe).trigger jQuery.Event("onKeyPress")
+            editorBody$.on 'paste' , (e) =>
+                @paste(e)
             # 4- return a ref to the editor's controler
             callBack.call(this)
             return this
@@ -256,15 +264,15 @@ class exports.CNEditor extends Backbone.View
                     when 8   then keyStrokesCode = "backspace"
                     when 97  then keyStrokesCode = "A"
                     when 115 then keyStrokesCode = "S"
-                    when 118 then keyStrokesCode = "C"
+                    when 118 then keyStrokesCode = "V"
                     when 121 then keyStrokesCode = "Y"
                     when 122 then keyStrokesCode = "Z"
                     #else  keyStrokesCode = e.which
                     else keyStrokesCode = "other"
         shortcut = metaKeyStrokesCode + '-' + keyStrokesCode
         
-        # a,s,c,y,z alone are simple characters
-        if shortcut in ["-A", "-S", "-C", "-Y", "-Z"] then shortcut = "-other"
+        # a,s,v,y,z alone are simple characters
+        if shortcut in ["-A", "-S", "-V", "-Y", "-Z"] then shortcut = "-other"
 
         # for tests and check the key and caracter numbers :
         # console.clear()
@@ -357,11 +365,9 @@ class exports.CNEditor extends Backbone.View
                 @_toggleLineType()
                 e.preventDefault()
             
-            # PASTE (Ctrl + c)                  
-            when "Ctrl-C"
-                # TODO
-                # console.log "TODO : PASTE"
-                e.preventDefault()
+            # PASTE (Ctrl + v)                  
+            when "Ctrl-V"
+                console.log "pasting..."
                 #@_updateDeepest()
                
             
@@ -1717,7 +1723,67 @@ class exports.CNEditor extends Backbone.View
     #  TODO
     ###
     
-    
+    ### ------------------------------------------------------------------------
+    #  PASTE MANAGEMENT
+    # move the cursor into an invisible sandbox, then redirect pasted content
+    # there. Pasted content is sanitized and adapted to our format, then
+    # selection is restored and cleaned content is injected right behind the
+    # caret position 
+    ###
+    paste : (event) ->
+        
+        # save current selection
+        savedSel = rangy.saveSelection(rangy.dom.getIframeWindow @editorIframe)
+        
+        # move carret into the sandbox
+        sel = rangy.getIframeSelection(@editorIframe)
+        range = rangy.createRange()
+        range.collapseToPoint(@_sandBox, 0)
+        sel.setSingleRange(range)
+        
+        # check whether the browser is a Webkit or not
+        if event and event.clipboardData and event.clipboardData.getData
+            # Webkit: 1-get data from clipboard
+            #         2-put data in the sandbox
+            #         3-clean the sandbox
+            #         4-cancel event (otherwise it pastes twice)
+            if event.clipboardData.types == "text/html"
+                @_sandBox.innerHTML = event.clipboardData.getData('text/html');
+            else if event.clipboardData.types == "text/plain"
+                @_sandBox.innerHTML = event.clipboardData.getData('text/plain');
+            else
+                @_sandBox.innerHTML = ""
+            @_waitForPasteData(@_sandBox, @_processPaste, savedSel)
+            if event.preventDefault
+                event.stopPropagation()
+                event.preventDefault()
+            return false
+        else
+            # not a Webkit: 1-empty the sandBox
+            #               2-paste in sandBox
+            #               3-cleanup the sandBox
+            @_sandBox.innerHTML = ""
+            @_waitForPasteData(@_sandBox, @_processPaste, savedSel)
+            return true
+            
+    _waitForPasteData : (sandbox, processpaste, savedSel) ->
+        (waitforpastedata = (elem) ->
+            if elem.childNodes and elem.childNodes.length > 0
+                # again, something is missing during the restoration
+                rangy.restoreSelection(savedSel)
+                processpaste(sandbox)
+            else
+                that = {e: elem}
+                that.callself = () ->
+                    waitforpastedata that.e
+                setTimeout(that.callself, 20))(sandbox)
+            
+    _processPaste : (sandbox) ->
+        pasteddata = sandbox.innerHTML
+        sandbox.innerHTML = ""
+        console.log(pasteddata)
+        
+   
     ### ------------------------------------------------------------------------
     #  MARKUP LANGUAGE CONVERTERS
     # _cozy2md (Read a string of editor html code format and turns it into a
