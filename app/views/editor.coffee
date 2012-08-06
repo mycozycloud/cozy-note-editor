@@ -595,9 +595,12 @@ class exports.CNEditor extends Backbone.View
                 return 1
         else 
             linePrev = line.linePrev
-            while linePrev.lineDepthAbs >= line.lineDepthAbs
+            while linePrev!=null and linePrev.lineDepthAbs >= line.lineDepthAbs
                 linePrev = linePrev.linePrev
-            return linePrev.lineDepthRel+1
+            if linePrev != null
+                return linePrev.lineDepthRel+1
+            else
+                return 0
 
 
     ### ------------------------------------------------------------------------
@@ -1128,15 +1131,17 @@ class exports.CNEditor extends Backbone.View
             # find the previous sibling, adjust type to its type.
             firstLineAfterSiblingsOfDeleted = line
             depthSibling = line.lineDepthAbs
+            
             line = line.linePrev
             while line != null and line.lineDepthAbs > depthSibling
                 line = line.linePrev
-            prevSiblingType = line.lineType
-            if firstLineAfterSiblingsOfDeleted.lineType!=prevSiblingType
-                if prevSiblingType[1]=='h'
-                    @_line2titleList(firstLineAfterSiblingsOfDeleted)
-                else
-                    @markerList(firstLineAfterSiblingsOfDeleted)
+            if line != null
+                prevSiblingType = line.lineType
+                if firstLineAfterSiblingsOfDeleted.lineType!=prevSiblingType
+                    if prevSiblingType[1]=='h'
+                        @_line2titleList(firstLineAfterSiblingsOfDeleted)
+                    else
+                        @markerList(firstLineAfterSiblingsOfDeleted)
 
         # 7- position caret
         if replaceCaret
@@ -1448,6 +1453,7 @@ class exports.CNEditor extends Backbone.View
             lineStart.line$.before(lineNext.line$)
             
             # 6-Re-insert properly lineNext before the start of the moved block
+            if linePrev == null then return
             #6.1 if the swapped line is less indented than the block's prev line
             if lineNext.lineDepthAbs <= linePrev.lineDepthAbs
                 # create a range to select the block to untab (several times)
