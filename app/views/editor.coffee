@@ -388,6 +388,8 @@ class exports.CNEditor extends Backbone.View
     ### ------------------------------------------------------------------------
     # Manage deletions when suppr key is pressed
     ###
+    #
+    # TODO: bug: a suppr operated before an empty line removes the <br> label
     _suppr : (e) ->
         @_findLinesAndIsStartIsEnd()
         sel = this.currentSel
@@ -1835,7 +1837,12 @@ class exports.CNEditor extends Backbone.View
     # _md2cozy (Read a string of html code given by showdown and turns it into
     #           a string of editor html code)
     ###
-    
+
+    #
+    #  WARNING: an odd bug occurs around the 19-th line in the example :
+    #           ./templates/content-shortlines-marker
+    #           (there are some empty lines around)
+    # 
     # Read a string of editor html code format and turns it into a string in
     #  markdown format
     _cozy2md : (text) ->
@@ -1847,7 +1854,7 @@ class exports.CNEditor extends Backbone.View
         markCode = ''
 
         # current depth
-        currDepth = 1
+        currDepth = 0
         
         # converts a fragment of a line
         converter = {
@@ -1896,7 +1903,7 @@ class exports.CNEditor extends Backbone.View
             type  = tab[0]               # type of class (Tu,Lu,Th,Lh,To,Lo)
             depth = parseInt(tab[1], 10) # depth (1,2,3...)
             blanks = ''
-            i = 0
+            i = 1
             while i < depth - currDepth
                 blanks += '    '
                 i++
@@ -1935,11 +1942,8 @@ class exports.CNEditor extends Backbone.View
 
     # Read a string of html code given by showdown and turns it into a string
     # of editor html code
-    # 
-    # ATTENTION -- Bug detected: <pre><code> labels have replaced <ul><li>.....
-    #  </li>, making every line but Th-Lh disappear
     _md2cozy: (text) ->
-
+    
         conv = new Showdown.converter()
         text = conv.makeHtml text
        
