@@ -878,7 +878,7 @@ class exports.CNEditor extends Backbone.View
         currSel   = this.currentSel
         startLine = currSel.startLine
         endLine   = currSel.endLine
-
+        
         # 1- Delete the selections so that the selection is collapsed
         if currSel.range.collapsed
             
@@ -889,7 +889,7 @@ class exports.CNEditor extends Backbone.View
             @_findLinesAndIsStartIsEnd()
             currSel   = this.currentSel
             startLine = currSel.startLine
-        
+       
         # 2- Caret is at the end of the line
         if currSel.rangeIsEndLine
             newLine = @_insertLineAfter (
@@ -1320,15 +1320,28 @@ class exports.CNEditor extends Backbone.View
                 # succession of span : maybe one day there will be a table for
                 # instance...)
                 rangeIsEndLine = false
-                if parentEndContainer.nodeType == Node.TEXT_NODE
-                    rangeIsEndLine = ( initialEndOffset == parentEndContainer.textContent.length )
+                # case of a textNode: it must have no nextSibling and offset must be its length
+                if endContainer.nodeType == Node.TEXT_NODE
+                    rangeIsEndLine = endContainer.nextSibling == null and
+                                     initialEndOffset == endContainer.textContent.length
+                # case of another node (for instance) : it must be a br; or followed by a br
+                #  and have maximal offset
                 else
-                    nextSibling = parentEndContainer.nextSibling
-                    rangeIsEndLine = (nextSibling == null or (initialEndOffset==parentEndContainer.textContent.length and nextSibling.nodeName=='BR'))
+                    nextSibling    = endContainer.nextSibling
+                    rangeIsEndLine = endContainer.nodeName=='BR' or
+                                     (nextSibling.nodeName=='BR' and
+                                     endContainer.childNodes.length==initialEndOffset)
+                    #nextSibling    = endContainer.nextSibling
+                    #rangeIsEndLine = (nextSibling == null or nextSibling.nodeName=='BR')
+                    #(nextSibling == null or (initialEndOffset==parentEndContainer.textContent.length and nextSibling.nodeName=='BR'))
+                    
                 parentEndContainer = endContainer.parentNode
                 while rangeIsEndLine and parentEndContainer.nodeName != "DIV"
                     nextSibling = parentEndContainer.nextSibling
-                    rangeIsEndLine = (nextSibling == null or nextSibling.nodeName=='BR')
+                    #rangeIsEndLine = (nextSibling == null or nextSibling.nodeName=='BR')
+                    rangeIsEndLine = endContainer.nodeName=='BR' or
+                                     (nextSibling.nodeName=='BR' and
+                                     endContainer.childNodes.length==initialEndOffset)
                     parentEndContainer = parentEndContainer.parentNode
             
             # 3- find startLine and rangeIsStartLine
@@ -2019,3 +2032,87 @@ class exports.CNEditor extends Backbone.View
             readHtml $ @
         
         return cozyCode
+
+
+    # CLEANED UP HTML PARSING
+    # 
+    # We suppose the html treated here has already been sanitized so the DOM
+    #  structure is coherent and not twisted
+    # 
+    # _parseHtml:
+    #  Parse an html string and return the matching html in the editor's format
+    # We try to restitute the very structure the initial fragment :
+    #   > indentation
+    #   > lists
+    #   > images, links, tables... and their specific attributes
+    #   > text
+    #   > textuals enhancements (bold, underlined, italic)
+    #   > titles
+    #   > line return
+    # 
+    # Ideas to do that :
+    #  0- textContent is always kept
+    #  1- A, IMG keep their specific attributes
+    #  2- UL, OL become divs whose class is Tu/To. LI become Lu/Lo
+    #  3- H[1-6] become divs whose class is Th. Depth is determined depending on
+    #     where the element was pasted.
+    #  4- U, B have the effect of adding to each elt they contain a class (bold
+    #     and underlined class)
+    #  5- BR delimit the different DIV that will be added
+    #  6- relative indentation preserved with imbrication of paragraphs P
+    #  7- any other elt is turned into a simple SPAN with a textContent
+    #  8- IFRAME, FRAME, SCRIPT are ignored
+    # _parseHtml : (htmlFrag) ->
+        
+        # result = ''
+
+        # specific attributes of IMG and A are copied
+        # copySpecificAttributes =
+            # "IMG" : (elt) ->
+                # attributes = ''
+                # for attr in ["alt", "border", "height", "width", "ismap", "hspace", "vspace", "logdesc", "lowsrc", "src", "usemap"]
+                    # if attr?
+                        # attributes += " #{attr}=#{elt.getAttribute(attr)}"
+                # return "<img #{attributes}>#{elt.textContent}</img>"
+            # "A" : (elt) ->
+                # attributes = ''
+                # for attr in ["href", "hreflang", "target", "title"]
+                    # if attr?
+                        # attributes += " #{attr}=#{elt.getAttribute(attr)}"
+                # return "<a #{attributes}>#{elt.textContent}</a>"
+                
+
+        # read recursively through the dom tree and turn the html fragment into
+        # a correct bit of html for the editor with the same specific attributes
+        
+        # leafReader = (tree) ->
+            # if the element is an A or IMG --> produce an editor A or IMG
+            # if tree.nodeName == "A" || tree.nodeName == "IMG"
+                # return copySpecificAttributes[tree.nodeName](tree)
+            # if the element is a BR
+            # else if tree.nodeName == "BR"
+                # return "<br>"
+            # if the element is B, U, I, EM then spread this highlightment
+            # if the element is UL(OL) then start a Tu(To)
+            # if the element is LI then continue the list (unless if it is the
+            #    first child of a UL-OL)
+            # else
+            # else if tree.firstChild != null
+                # sibling = tree.firstChild
+                # while sibling != null
+                   #  result += leafReader(sibling)
+                    # sibling = sibling.nextSibling
+            # if the element
+                # src = "src=#{tree.getAttribute('src')}"
+            
+            # if the element has children
+            # child = tree.firstChild
+            # if child != null
+            #     while child != null
+                    # result += leafReader(child)
+                    # child = child.nextSibling
+            # else
+                
+                # return tree.innerHTML || tree.textContent
+
+        # leafReader(htmlFrag)

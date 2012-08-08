@@ -60,6 +60,9 @@ exports.initPage =  ()->
             
         $("#resultBtnBar_coller").on  'click' , ->
             beautify(editorBody$)
+            test = document.createElement('div')
+            test.innerHTML = '<span>toto</span><br>'
+            console.log editorCtrler._parseHtml(test)
             
         $("#printRangeBtn").on "click", () ->
             sel = rangy.getIframeSelection(editorCtrler.editorIframe)
