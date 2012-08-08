@@ -2,12 +2,13 @@
 
 Simple, yet Towerfull : one day it will be !
 
+## About the Android/ folder
+
+    * run `sh amalgamer.sh [<targetNameHere>]` to generate a JavaScript file that nestes an editor inside the element whose id is '<targetNameHere>' or 'editorIframe' if no argument specified.
+
+	* notice that target may not be an iFrame
 
 ## The main object CNEditor
-
-    * To create a single javascript file containing the class CNEditor with all
-	  its dependances, go into Android/, create a new folder called bin/ then
- 	  execute `sh amalgamer.sh`
 
     * constructor(iframeTarget, callBack) : the editor is set within the specified iframe label.
     * _note_ : an event called "onHistoryChanged" is triggered on the iframe nesting the editor whenever a content's modification occurs and is significant enough. The editor's content should be saved when it happens.

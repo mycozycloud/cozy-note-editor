@@ -30,50 +30,56 @@ class exports.CNEditor extends Backbone.View
     #       callBack     = launched when editor ready, the context 
     #                      is set to the editorCtrl (callBack.call(this))
     ###
-    constructor : (iframeTarget,callBack) ->
+    constructor : (elementTarget,callBack) ->
         #iframe$ = $('<iframe style="width:50%;height:100%"></iframe>').appendTo(iframeTarget)
         #iframe$ = $(iframeTarget).replaceWith('<iframe  style="width:50%;height:100%"></iframe>')
-        iframe$ = $(iframeTarget)
-        iframe$.on 'load', () =>
-            # 1- preparation of the iframe
-            editor_html$ = iframe$.contents().find("html")
-            editorBody$  = editor_html$.find("body")
-            editorBody$.parent().attr('id','__ed-iframe-html')
-            editorBody$.attr("contenteditable", "true")
-            editorBody$.attr("id","__ed-iframe-body")
-            editor_head$ = editor_html$.find("head")
-            editor_css$  = editor_head$.html('<link href="stylesheets/app.css" 
-                                               rel="stylesheet">')
-            # 2- set the properties of the editor
-            @editorBody$  = editorBody$  # label <body> of the iframe
-            @editorIframe = iframe$[0]   # <iframe>
-            @_lines       = {}           # contains every line
-            @newPosition  = true         # true only if cursor has moved
-            @_highestId   = 0            # last inserted line identifier
-            @_deepest     = 1            # current maximum indentation
-            @_firstLine   = null         # pointer to the first line
-            @_history     =              # for history management
-                index        : 0
-                history      : [null]
-                historySelect: [null]
-                historyScroll: [null]
-            @_lastKey     = null         # last pressed key (avoid duplication)
+        if elementTarget.nodeName == "IFRAME"
+            iframe$ = $(elementTarget)
+            iframe$.on 'load', () =>
+                # 1- preparation of the iframe
+                editor_html$ = iframe$.contents().find("html")
+                editorBody$  = editor_html$.find("body")
+                editorBody$.parent().attr('id','__ed-iframe-html')
+                editorBody$.attr("contenteditable", "true")
+                editorBody$.attr("id","__ed-iframe-body")
+                editor_head$ = editor_html$.find("head")
+                editor_css$  = editor_head$.html('<link href="stylesheets/app.css" rel="stylesheet">')
             
-            # 3- initialize event listeners
-            editorBody$.prop( '__editorCtl', this)
-            editorBody$.on 'keypress' , @_keyPressListener
-            editorBody$.on 'keyup', () ->
-                $(iframe$[0]).trigger jQuery.Event("onKeyUp")
-            # editorBody$.on 'keydown', () ->
-                # $(@editorIframe).trigger jQuery.Event("onKeyDown")
-            # editorBody$.on 'keypress', () ->
-                # $(@editorIframe).trigger jQuery.Event("onKeyPress")
-            editorBody$.on 'paste' , (e) =>
-                console.log "pasting..."
-                @paste(e)
-            # 4- return a ref to the editor's controler
-            callBack.call(this)
-            return this
+            
+                # 2- set the properties of the editor
+                @editorBody$  = editorBody$  # label <body> of the iframe
+                @editorIframe = elementTarget # <iframe>
+                @_lines       = {}           # contains every line
+                @newPosition  = true         # true only if cursor has moved
+                @_highestId   = 0            # last inserted line identifier
+                @_deepest     = 1            # current maximum indentation
+                @_firstLine   = null         # pointer to the first line
+                @_history     =              # for history management
+                    index        : 0
+                    history      : [null]
+                    historySelect: [null]
+                    historyScroll: [null]
+                @_lastKey     = null         # last pressed key (avoid duplication)
+                
+                # 3- initialize event listeners
+                editorBody$.prop( '__editorCtl', this)
+                editorBody$.on 'keypress', @_keyPressListener
+                editorBody$.on 'keyup', () ->
+                    iframe$.trigger jQuery.Event("onKeyUp")
+                # editorBody$.on 'keydown', () ->
+                    # $(@editorIframe).trigger jQuery.Event("onKeyDown")
+                # editorBody$.on 'keypress', () ->
+                    # $(@editorIframe).trigger jQuery.Event("onKeyPress")
+                editorBody$.on 'paste', (e) =>
+                    console.log "pasting..."
+                    @paste(e)
+                # 4- return a ref to the editor's controler
+                callBack.call(this)
+                return this
+
+        else
+            console.log "target is not an iframe..."
+            
 
     ### ------------------------------------------------------------------------
     # Find the maximal deep (thus the deepest line) of the text
