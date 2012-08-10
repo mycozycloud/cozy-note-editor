@@ -18,8 +18,8 @@ exports.initPage =  ()->
     $("body").html require('./templates/editor')
     editorIframe$ = $("iframe")
 
-    $("iframe").on "onHistoryChanged", () ->
-        console.log "history updated"
+    # $("iframe").on "onHistoryChanged", () ->
+        # console.log "history updated"
     
     # callback to execute after editor's initialization
     # the contexte (this) inside the function is the editor
@@ -60,19 +60,15 @@ exports.initPage =  ()->
             
         $("#resultBtnBar_coller").on  'click' , ->
             beautify(editorBody$)
-            test = document.createElement('div')
-            test.innerHTML = '<span>toto</span><br>'
-            console.log editorCtrler._parseHtml(test)
             
         $("#printRangeBtn").on "click", () ->
-            sel = rangy.getIframeSelection(editorCtrler.editorIframe)
+            sel = editorCtrler.getEditorSelection()
             i = 0
             l = sel.rangeCount
-            console.log "Printing current ranges"
             while i<l
                 console.log "Range N°#{i}"
                 range = sel.getRangeAt(i)
-                console.log "containers : #{range.startContainer.nodeName} #{range.endContainer.nodeName}"
+                console.log range
                 console.log "content : #{range.toHtml()}"
                 i++
                 
@@ -207,7 +203,6 @@ exports.initPage =  ()->
 
         # display whether the user has moved the carret with keyboard or mouse.
         this.editorBody$.on 'mouseup' , () =>
-            this.newPosition = true
             $("#editorPropertiesDisplay").text("newPosition = true")
 
         # automatic summary
