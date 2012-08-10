@@ -1,5 +1,4 @@
 ## TODO: fire an history event whenever a button is clicked
-## TODO: bug: suppr before an empty line removes the <br> label
 
 ### ------------------------------------------------------------------------
 # CLASS FOR THE COZY NOTE EDITOR
@@ -71,10 +70,12 @@ class exports.CNEditor extends Backbone.View
                 
                 # 3- initialize event listeners
                 editorBody$.prop( '__editorCtl', this)
+                editorBody$.on 'mouseup', () =>
+                    @newPosition = true
                 editorBody$.on 'keypress', @_keyPressListener
                 editorBody$.on 'keyup', () ->
                     iframe$.trigger jQuery.Event("onKeyUp")
-                 editorBody$.on 'paste', (e) =>
+                editorBody$.on 'paste', (e) =>
                     console.log "pasting..."
                     @paste(e)
                 # 4- return a ref to the editor's controler
@@ -114,6 +115,8 @@ class exports.CNEditor extends Backbone.View
                 # 3- initialize event listeners
                 editorBody$.prop( '__editorCtl', this)
                 editorBody$.on 'keypress', @_keyPressListener
+                editorBody$.on 'mouseup', () =>
+                    @newPosition = true
                 editorBody$.on 'keyup', () ->
                     node$.trigger jQuery.Event("onKeyUp")
                 editorBody$.on 'paste', (e) =>
@@ -194,18 +197,20 @@ class exports.CNEditor extends Backbone.View
     ### ------------------------------------------------------------------------
     # UTILITY FUNCTIONS
     # used to set ranges and normalize selection
+    # 
+    # parameters: elt  :  a dom object with only textNode children
     ###
     _putEndOnEnd : (range, elt) ->
-        if elt.firstChild?
-            offset = $(elt.firstChild).text().length
-            range.setEnd(elt.firstChild, offset)
+        if elt.lastChild?
+            offset = elt.lastChild.textContent.length
+            range.setEnd(elt.lastChild, offset)
         else
             range.setEnd(elt, 0)
             
     _putStartOnEnd : (range, elt) ->
-        if elt.firstChild?
-            offset = $(elt.firstChild).text().length
-            range.setStart(elt.firstChild, offset)
+        if elt.lastChild?
+            offset = elt.lastChild.textContent.length
+            range.setStart(elt.lastChild, offset)
         else
             range.setStart(elt, 0)
             
@@ -222,33 +227,93 @@ class exports.CNEditor extends Backbone.View
             range.setStart(elt, 0)
             
     _normalize : (range) ->
+            
+        startContainer = range.startContainer
+        # 1. if startC is a div
+        if startContainer.nodeName == "DIV"
+            
+            # 1.1 if caret is between two children <div>|<></>|<></> <br> </div>
+            if range.startOffset < startContainer.childNodes.length - 1
+                # place caret at the beginning of the next child
+                elt = startContainer.childNodes[range.startOffset]
+                @_putStartOnStart(range, elt)
+            # 1.2 if caret is around <br>          <div> <></> <></>|<br>|</div>
+            else
+                # place caret at the end of the last child (before br)
+                elt = startContainer.lastChild.previousElementSibling
+                @_putStartOnEnd(range, elt)
+                
+        # 2. if startC is a span, a, img
+        else if startContainer.nodeName in ["SPAN","IMG","A"]
+            # 2.1 if caret is between two textNode children
+            if range.startOffset < startContainer.childNodes.length
+                # place caret at the beginning of the next child
+                elt = startContainer.childNodes[range.startOffset]
+                @_putStartOnStart(range, elt)
+            # 2.1 if caret is after last textNode
+            else
+                # place caret at the end of the last child
+                elt = startContainer.lastChild
+                @putStartOnEnd(range, elt)
+                
+        # 3. if startC is a textNode ;   do nothing
+                
+        endContainer = range.endContainer
+        # 1. if endC is a div
+        if endContainer.nodeName == "DIV"
+            # 1.1 if caret is between two children <div>|<></>|<></> <br> </div>
+            if range.endOffset < endContainer.childNodes.length - 1
+                # place caret at the beginning of the next child
+                elt = endContainer.chilNodes[range.endOffset]
+                @_putEndOnStart(range, elt)
+            # 1.2 if caret is around <br>          <div> <></> <></>|<br>|</div>
+            else
+                # place caret at the end of the last child (before br)
+                elt = endContainer.lastChild.previousElementSibling
+                @_putEndOnEnd(range, elt)
+                
+        # 2. if endC is a span, a, img
+        else if endContainer.nodeName in ["SPAN","IMG","A"]
+            # 2.1 if caret is between two textNode children
+            if range.endOffset < endContainer.childNodes.length
+                # place caret at the beginning of the next child
+                elt = endContainer.childNodes[range.endOffset]
+                @_putEndOnStart(range, elt)
+            # 2.1 if caret is after last textNode
+            else
+                # place caret at the end of the last child
+                elt = endContainer.lastChild
+                @putEndOnEnd(range, elt)
+        # 3. if endC is a textNode ;   do nothing
+
+        
         # We suppose that a div can be selected only when clicking on the right
         # 1. if it's a div
-        startContainer = range.startContainer
-        if startContainer.nodeName == "DIV"
-            elt = startContainer.lastChild.previousElementSibling
-            @_putStartOnEnd(range, elt)
+        #startContainer = range.startContainer
+        #if startContainer.nodeName == "DIV"
+            #elt = startContainer.lastChild.previousElementSibling
+            #@_putStartOnEnd(range, elt)
         # 2. if it's between two labels span/img/a
-        else if ! startContainer.parentNode in ["SPAN","IMG","A"]
-            next=startContainer.nextElementSibling
-            prev=startContainer.previousElementSibling
-            if next != null
-                @_putStartOnStart(range, next)
-            else
-                @_putEndOnEnd(range, prev)
+        #else if ! startContainer.parentNode.nodeName in ["SPAN","IMG","A"]
+            #next = startContainer.nextElementSibling
+            #prev = startContainer.previousElementSibling
+            #if next != null
+                #@_putStartOnStart(range, next)
+            #else
+                #@_putEndOnEnd(range, prev)
         # same with the selection end
         # 1. if it's a div
-        endContainer = range.endContainer
-        if endContainer.nodeName == "DIV"
-            elt = endContainer.lastChild.previousElementSibling
-            @_putEndOnEnd(range, elt)
-        else if ! endContainer.parentNode in ["SPAN","IMG","A"]
-            next=endContainer.nextElementSibling
-            prev=endContainer.previousElementSibling
-            if next != null
-                @_putStartOnStart(range, next)
-            else
-                @_putEndOnEnd(range, prev)
+        #endContainer = range.endContainer
+        #if endContainer.nodeName == "DIV"
+            #elt = endContainer.lastChild.previousElementSibling
+            #@_putEndOnEnd(range, elt)
+        #else if ! endContainer.parentNode in ["SPAN","IMG","A"]
+            #next = endContainer.nextElementSibling
+            #prev = endContainer.previousElementSibling
+            #if next != null
+                #@_putStartOnStart(range, next)
+            #else
+                #@_putEndOnEnd(range, prev)
 
     
     ### ------------------------------------------------------------------------
@@ -283,7 +348,6 @@ class exports.CNEditor extends Backbone.View
     #                               N°102 f is stroke) or "space" ...
     #
     _keyPressListener : (e) =>
-        
         # 1- Prepare the shortcut corresponding to pressed keys
         # TODO: when pressed key is a letter, prevent the browser default action
         #       and an unDo after a sequence of letters shoud delete it
@@ -340,7 +404,8 @@ class exports.CNEditor extends Backbone.View
                               "home"] and 
                               shortcut not in ['CtrlShift-down','CtrlShift-up']
             @newPosition = true
-         
+            $("#editorPropertiesDisplay").text("newPosition = true")
+            
         #if there was no keyboard move action but the previous action was a move
         # then "normalize" the selection
         else
@@ -444,8 +509,8 @@ class exports.CNEditor extends Backbone.View
     _suppr : (e) ->
         @_findLinesAndIsStartIsEnd()
         sel = this.currentSel
-        startLine = sel.startLine
 
+        startLine = sel.startLine
         # 1- Case of a caret "alone" (no selection)
         if sel.range.collapsed
             # 1.1 caret is at the end of the line
@@ -552,12 +617,12 @@ class exports.CNEditor extends Backbone.View
     ###
     _line2titleList : (line)->
         if line.lineType != 'Th'
-            if line.lineType[0] =='L'
+            if line.lineType[0] == 'L'
                 line.lineType = 'Tu'
-                line.lineDepthAbs +=1    
+                line.lineDepthAbs += 1    
             @_titilizeSiblings(line)
             parent1stSibling = @_findParent1stSibling(line)
-            while parent1stSibling!=null and parent1stSibling.lineType!='Th'
+            while parent1stSibling!=null and parent1stSibling.lineType != 'Th'
                 @_titilizeSiblings(parent1stSibling)
                 parent1stSibling = @_findParent1stSibling(parent1stSibling)
 
@@ -573,8 +638,8 @@ class exports.CNEditor extends Backbone.View
         else
             #range              = rangy.getIframeSelection(@editorIframe).getRangeAt(0)
             range = @getEditorSelection().getRangeAt(0)
-            # WTF
-            endContainer       = 
+            # what is this line doing down there?
+            # endContainer       = 
             initialStartOffset = range.startOffset
             initialEndOffset   = range.endOffset
             # 2- find first and last div corresponding to the 1rst and
@@ -935,6 +1000,8 @@ class exports.CNEditor extends Backbone.View
         currSel   = this.currentSel
         startLine = currSel.startLine
         endLine   = currSel.endLine
+
+        console.log currSel
         
         # 1- Delete the selections so that the selection is collapsed
         if currSel.range.collapsed
@@ -988,7 +1055,10 @@ class exports.CNEditor extends Backbone.View
             )
             # Position caret
             range4sel = rangy.createRange()
-            range4sel.collapseToPoint(newLine.line$[0].firstChild.childNodes[0],0)
+            console.log newLine.line$[0]
+            #range4sel.collapseToPoint(newLine.line$[0].firstChild.childNodes[0],0)
+            range4sel.collapseToPoint(newLine.line$[0].firstChild,0)
+            
             currSel.sel.setSingleRange(range4sel)
             this.currentSel = null
 
@@ -1033,7 +1103,7 @@ class exports.CNEditor extends Backbone.View
     ### ------------------------------------------------------------------------
     # find the sibling line of the parent of line that is the first of the list
     # ex :
-    #   . Sibling1  <= _findParent1stSibling(line)
+    #   . Sibling1 <= _findParent1stSibling(line)
     #   . Sibling2
     #   . Parent
     #      . child1
@@ -1381,9 +1451,9 @@ class exports.CNEditor extends Backbone.View
                 rangeIsEndLine = false
                 # case of a textNode: it must have no nextSibling and offset must be its length
                 if endContainer.nodeType == Node.TEXT_NODE
-                    rangeIsEndLine = endContainer.nextSibling == null and
+                    rangeIsEndLine = endContainer.nextSibling == undefined and
                                      initialEndOffset == endContainer.textContent.length
-                # case of another node (for instance) : it must be a br; or followed by a br
+                # case of another node : it must be a br; or followed by a br
                 #  and have maximal offset
                 else
                     nextSibling    = endContainer.nextSibling
@@ -1407,15 +1477,21 @@ class exports.CNEditor extends Backbone.View
             if startContainer.nodeName == 'DIV' # startContainer refers to a div of a line
                 startLine = @_lines[ startContainer.id ]
                 rangeIsStartLine = (initialStartOffset==0)
-                if initialStartOffset==1 and startContainer.innerHTML=="<span></span><br>" # startContainer is the br after an empty span
-                    rangeIsStartLine = true
+                 #if initialStartOffset==1 and startContainer.innerHTML=="<span></span><br>" # startContainer is the br after an empty span
+                     #rangeIsStartLine = true
             else   # means the range starts inside a div (span, textNode...)
                 startLine = @_lines[ $(startContainer).parents("div")[0].id ]
                 rangeIsStartLine = (initialStartOffset==0)
                 while rangeIsStartLine && parentEndContainer.nodeName != "DIV"
                     rangeIsStartLine = (parentEndContainer.previousSibling==null)
                     parentEndContainer = parentEndContainer.parentNode
-            
+
+            # Special case of an "empty" line (<span><""></span><br>)
+            if endLine.line$[0].innerHTML == "<span></span><br>"
+                rangeIsEndLine = true
+            if startLine.line$[0].innerHTML == "<span></span><br>"
+                rangeIsStartLine = true
+
             # 4- return
             this.currentSel = 
                 sel              : sel
@@ -1707,11 +1783,11 @@ class exports.CNEditor extends Backbone.View
         # -> solutions? set our own scrollbar's system
         #               find out how to get the browser's auto scrollbars
         #                 positions inside a DOM element (textarea for ex.)
-        #savedScroll = 
-            #xcoord: @editorTarget.contentWindow.scrollX
-            #ycoord: @editorTarget.contentWindow.scrollY
+        savedScroll = 
+            xcoord: @editorBody$.scrollTop()
+            ycoord: @editorBody$.scrollLeft()
             
-        #@_history.historyScroll.push savedScroll
+        @_history.historyScroll.push savedScroll
         
         # 1- add the html content with markers to the history
         @_history.history.push @editorBody$.html()
@@ -1753,11 +1829,12 @@ class exports.CNEditor extends Backbone.View
             savedSel.restored = false
 
             
-            #xcoord = @_history.historyScroll[@_history.index].xcoord
-            #ycoord = @_history.historyScroll[@_history.index].ycoord
+            xcoord = @_history.historyScroll[@_history.index].xcoord
+            ycoord = @_history.historyScroll[@_history.index].ycoord
 
             
-            #@editorTarget.contentWindow.scrollTo(xcoord, ycoord)
+            @editorBody$.scrollTop(xcoord)
+            @editorBody$.scrollLeft(ycoord)
 
             # 7- position caret?
             # range4caret = rangy.createRange()
@@ -1785,9 +1862,11 @@ class exports.CNEditor extends Backbone.View
             savedSel.restored = false
 
 
-            #xcoord = @_history.historyScroll[@_history.index+1].xcoord
-            #ycoord = @_history.historyScroll[@_history.index+1].ycoord
-            #@editorTarget.contentWindow.scrollTo(xcoord, ycoord)
+            xcoord = @_history.historyScroll[@_history.index+1].xcoord
+            ycoord = @_history.historyScroll[@_history.index+1].ycoord
+            
+            @editorBody$.scrollTop(xcoord)
+            @editorBody$.scrollLeft(ycoord)
             
 
 
