@@ -264,16 +264,20 @@ class exports.CNEditor extends Backbone.View
                
         # 2. if startC is a span, a, img
         else if startContainer.nodeName in ["SPAN","IMG","A"]
+            # 2.0 if startC is empty
+            if startContainer.firstChild == null || startContainer.textContent.length == 0
+                @_putStartOnEnd(range, startContainer)
             # 2.1 if caret is between two textNode children
-            if range.startOffset < startContainer.childNodes.length
+            else if range.startOffset < startContainer.childNodes.length
                 # place caret at the beginning of the next child
-                elt = startContainer.childNodes[range.startOffset]
-                @_putStartOnStart(range, elt)
-            # 2.1 if caret is after last textNode
+                targetChild = startContainer.childNodes[range.startOffset]
+                range.setStart(targetChild, 0)
+            # 2.2 if caret is after last textNode
             else
                 # place caret at the end of the last child
-                elt = startContainer.lastChild
-                @putStartOnEnd(range, elt)
+                targetChild = startContainer.lastChild
+                offset = targetChild.data.length
+                range.setStart(targetChild, offset)
                 
         # 3. if startC is a textNode ;   do nothing
                 
@@ -293,16 +297,20 @@ class exports.CNEditor extends Backbone.View
                 
         # 2. if endC is a span, a, img
         else if endContainer.nodeName in ["SPAN","IMG","A"]
+            # 2.0 if endC is empty
+            if endContainer.firstChild == null || endContainer.textContent.length == 0
+                @_putEndOnEnd(range, endContainer)
             # 2.1 if caret is between two textNode children
             if range.endOffset < endContainer.childNodes.length
                 # place caret at the beginning of the next child
-                elt = endContainer.childNodes[range.endOffset]
-                @_putEndOnStart(range, elt)
-            # 2.1 if caret is after last textNode
+                targetChild = startContainer.childNodes[range.endOffset]
+                range.setEnd(targetChild, 0)
+            # 2.2 if caret is after last textNode
             else
                 # place caret at the end of the last child
-                elt = endContainer.lastChild
-                @putEndOnEnd(range, elt)
+                targetChild = endContainer.lastChild
+                offset = targetChild.data.length
+                range.setEnd(targetChild, offset)
         # 3. if endC is a textNode ;   do nothing
 
         return range
