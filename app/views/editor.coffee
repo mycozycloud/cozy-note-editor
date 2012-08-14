@@ -66,7 +66,6 @@ class exports.CNEditor extends Backbone.View
                     history      : [null]
                     historySelect: [null]
                     historyScroll: [null]
-                    historyLines:  [null]
                 @_lastKey     = null      # last pressed key (avoid duplication)
                 
                 # 3- initialize event listeners
@@ -208,6 +207,7 @@ class exports.CNEditor extends Backbone.View
     _putEndOnEnd : (range, elt) ->
         if elt.lastChild?
             offset = elt.lastChild.textContent.length
+            if offset == 0 then elt.lastChild.data = " "
             range.setEnd(elt.lastChild, offset)
         else
             blank = document.createTextNode " "
@@ -217,6 +217,7 @@ class exports.CNEditor extends Backbone.View
     _putStartOnEnd : (range, elt) ->
         if elt.lastChild?
             offset = elt.lastChild.textContent.length
+            if offset == 0 then elt.lastChild.data = " "
             range.setStart(elt.lastChild, offset)
         else
             blank = document.createTextNode " "
@@ -225,6 +226,8 @@ class exports.CNEditor extends Backbone.View
             
     _putEndOnStart : (range, elt) ->
         if elt.firstChild?
+            offset = elt.firstChild.textContent.length
+            if offset == 0 then elt.firstChild.data = " "
             range.setEnd(elt.firstChild, 0)
         else
             blank = document.createTextNode " "
@@ -233,6 +236,8 @@ class exports.CNEditor extends Backbone.View
             
     _putStartOnStart : (range, elt) ->
         if elt.firstChild?
+            offset = elt.firstChild.textContent.length
+            if offset == 0 then elt.firstChild.data = " "
             range.setStart(elt.firstChild, 0)
         else
             blank = document.createTextNode " "
@@ -388,9 +393,7 @@ class exports.CNEditor extends Backbone.View
         #       - selection must start and end in a span
 
         # 2.1- Set a flag if the user moved the carret with keyboard
-        if keyStrokesCode in ["left","up","right","down","pgUp","pgDwn","end",
-                              "home"] and 
-                              shortcut not in ['CtrlShift-down','CtrlShift-up']
+        if keyStrokesCode in ["return", "left","up","right","down","pgUp","pgDwn","end", "home"] and shortcut not in ['CtrlShift-down','CtrlShift-up']
             @newPosition = true
             $("#editorPropertiesDisplay").text("newPosition = true")
             
@@ -412,6 +415,7 @@ class exports.CNEditor extends Backbone.View
                 # update window selection so it is normalized
                 normalizedSel = @getEditorSelection()
                 normalizedSel.setSingleRange(normalizedRange)
+
                 
         # 4- the current selection is initialized on each keypress
         this.currentSel = null
@@ -431,7 +435,7 @@ class exports.CNEditor extends Backbone.View
                 #@_updateDeepest()
             
             # TAB
-            when "-tab"
+            when "CtrlShift-right" || "-tab"
                 @tab()
                 e.preventDefault()
                 #@_updateDeepest()
@@ -457,7 +461,7 @@ class exports.CNEditor extends Backbone.View
                 e.preventDefault()
 
             # SHIFT TAB
-            when "Shift-tab"
+            when "CtrlShift-left" || "Shift-tab"
                 @shiftTab()
                 e.preventDefault()
                 #@_updateDeepest()
