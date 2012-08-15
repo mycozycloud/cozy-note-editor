@@ -203,10 +203,6 @@ exports.initPage =  ()->
         # editorBody$.on 'keyup', addClassToLines
         # editor_doAddClasseToLines = true
 
-        # display whether the user has moved the carret with keyboard or mouse.
-        this.editorBody$.on 'mouseup' , () =>
-            $("#editorPropertiesDisplay").text("newPosition = true")
-
         # automatic summary
         # this.editorBody$.on 'mouseup', () =>
         #     this.buildSummary()

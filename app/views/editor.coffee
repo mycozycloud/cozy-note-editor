@@ -66,13 +66,15 @@ class exports.CNEditor extends Backbone.View
                     history      : [null]
                     historySelect: [null]
                     historyScroll: [null]
+                    historyPos   : [null]
                 @_lastKey     = null      # last pressed key (avoid duplication)
                 
                 # 3- initialize event listeners
                 editorBody$.prop( '__editorCtl', this)
                 editorBody$.on 'mouseup', () =>
                     @newPosition = true
-                editorBody$.on 'keypress', @_keyPressListener
+                #editorBody$.on 'keypress', @_keyPressListener
+                editorBody$.on 'keydown', @_keyPressListener
                 editorBody$.on 'keyup', () ->
                     iframe$.trigger jQuery.Event("onKeyUp")
                 editorBody$.on 'paste', (e) =>
@@ -111,11 +113,13 @@ class exports.CNEditor extends Backbone.View
                     history      : [null]
                     historySelect: [null]
                     historyScroll: [null]
+                    historyPos   : [null]
                 @_lastKey     = null      # last pressed key (avoid duplication)
                 
                 # 3- initialize event listeners
                 editorBody$.prop( '__editorCtl', this)
-                editorBody$.on 'keypress', @_keyPressListener
+                #editorBody$.on 'keypress', @_keyPressListener
+                editorBody$.on 'keydown', @_keyPressListener
                 editorBody$.on 'mouseup', () =>
                     @newPosition = true
                 editorBody$.on 'keyup', () ->
@@ -248,8 +252,12 @@ class exports.CNEditor extends Backbone.View
     _normalize : (range) ->
         
         startContainer = range.startContainer
+        # 0. if startC is the body
+        if startContainer.nodeName == "BODY"
+            elt = startContainer.children[range.startOffset].firstChild
+            @_putStartOnStart(range, elt)
         # 1. if startC is a div
-        if startContainer.nodeName == "DIV"
+        else if startContainer.nodeName == "DIV"
             
             # 1.1 if caret is between two children <div>|<></>|<></> <br> </div>
             if range.startOffset < startContainer.childNodes.length - 1
@@ -282,6 +290,10 @@ class exports.CNEditor extends Backbone.View
         # 3. if startC is a textNode ;   do nothing
                 
         endContainer = range.endContainer
+        # 0. if endC is the body
+        if endContainer.nodeName == "BODY"
+            elt = endContainer.children[range.endOffset-1].lastChild
+            @_putEndOnEnd(range, elt.previousElementSibling)
         # 1. if endC is a div
         if endContainer.nodeName == "DIV"
             # 1.1 if caret is between two children <div>|<></>|<></> <br> </div>
@@ -370,15 +382,24 @@ class exports.CNEditor extends Backbone.View
             when 32 then keyStrokesCode = "space"
             when 27 then keyStrokesCode = "esc"
             when 46 then keyStrokesCode = "suppr"
+            when 16 #Shift
+                e.preventDefault()
+                return
+            when 17 #Ctrl
+                e.preventDefault()
+                return
+            when 18 #Alt
+                e.preventDefault()
+                return    
             else
                 switch e.which # TODO : to be deleted if it works with e.keyCode
-                    when 32  then keyStrokesCode = "space"  
-                    when 8   then keyStrokesCode = "backspace"
-                    when 97  then keyStrokesCode = "A"
-                    when 115 then keyStrokesCode = "S"
-                    when 118 then keyStrokesCode = "V"
-                    when 121 then keyStrokesCode = "Y"
-                    when 122 then keyStrokesCode = "Z"
+                    when 32 then keyStrokesCode = "space"  
+                    when 8  then keyStrokesCode = "backspace"
+                    when 65 then keyStrokesCode = "A"
+                    when 83 then keyStrokesCode = "S"
+                    when 86 then keyStrokesCode = "V"
+                    when 89 then keyStrokesCode = "Y"
+                    when 90 then keyStrokesCode = "Z"
                     #else  keyStrokesCode = e.which
                     else keyStrokesCode = "other"
         shortcut = metaKeyStrokesCode + '-' + keyStrokesCode
@@ -391,7 +412,17 @@ class exports.CNEditor extends Backbone.View
         # console.log '__keyPressListener____________________________'
         # console.log e
         # console.log "ctrl #{e.ctrlKey}; Alt #{e.altKey}; Shift #{e.shiftKey}; which #{e.which}; keyCode #{e.keyCode}"
-        # console.log "metaKeyStrokesCode:'#{metaKeyStrokesCode} keyStrokesCode:'#{keyStrokesCode}'"
+        # console.log "metaKeyStrokesCode:'#{metaKeyStrokesCode}' keyStrokesCode:'#{keyStrokesCode}'"
+
+
+ 
+        # Record last key pressed and eventually update the history
+        if @_lastKey != shortcut and shortcut in ["-tab", "-return", "-backspace", "-suppr", "CtrlShift-down", "CtrlShift-up", "Ctrl-C", "Shift-tab", "-space", "-other"]
+            @_addHistory()
+           
+        @_lastKey = shortcut
+
+
 
         # 2- manage the newPosition flag
         #    newPosition == true if the position of carret or selection has been
@@ -403,36 +434,31 @@ class exports.CNEditor extends Backbone.View
         # 2.1- Set a flag if the user moved the carret with keyboard
         if keyStrokesCode in ["return", "left","up","right","down","pgUp","pgDwn","end", "home"] and shortcut not in ['CtrlShift-down','CtrlShift-up']
             @newPosition = true
-            $("#editorPropertiesDisplay").text("newPosition = true")
             
         #if there was no keyboard move action but the previous action was a move
         # then "normalize" the selection
         else
             if @newPosition
-                @newPosition = false
-                # TODO: following line is just for test, must be somewhere else.
-                $("#editorPropertiesDisplay").text("newPosition = false")
 
-                # get the current range and normalize it
-                # TODO: following code is redundant but helpful for debugging
-                sel = @getEditorSelection()
-                range = sel.getRangeAt(0)
-                normalizedRange = rangy.createRange()
-                normalizedRange = @_normalize(range)
+                # selection is normalized only if an alphanumeric character
+                # or suppr/backspace/return is pressed
+                if shortcut in ['-other', '-space', '-suppr', '-backspace']
+                    @newPosition = false
+                    # get the current range and normalize it
+                    # TODO: following code is redundant but helpful for debugging
+                    sel = @getEditorSelection()
+                    range = sel.getRangeAt(0)
+                    normalizedRange = rangy.createRange()
+                    normalizedRange = @_normalize(range)
 
-                # update window selection so it is normalized
-                normalizedSel = @getEditorSelection()
-                normalizedSel.setSingleRange(normalizedRange)
+                    # update window selection so it is normalized
+                    normalizedSel = @getEditorSelection()
+                    normalizedSel.setSingleRange(normalizedRange)
 
                 
         # 4- the current selection is initialized on each keypress
         this.currentSel = null
-  
-        # Record last key pressed and eventually update the history
-        if @_lastKey != shortcut and shortcut in ["-tab", "-return", "-backspace", "-suppr", "CtrlShift-down", "CtrlShift-up", "Ctrl-C", "Shift-tab", "-space", "-other"]
-            @_addHistory()
-           
-        @_lastKey = shortcut
+ 
                  
         # 5- launch the action corresponding to the pressed shortcut
         switch shortcut
@@ -440,23 +466,22 @@ class exports.CNEditor extends Backbone.View
             when "-return"
                 @_return()
                 e.preventDefault()
-                #@_updateDeepest()
             
             # TAB
-            when "CtrlShift-right" || "-tab"
+            when "-tab"
                 @tab()
                 e.preventDefault()
-                #@_updateDeepest()
+            when "CtrlShift-right"
+                @tab()
+                e.preventDefault()
             
             # BACKSPACE
             when "-backspace"
                 @_backspace(e)
-                #@_updateDeepest()
             
             # SUPPR
             when "-suppr"
                 @_suppr(e)
-                #@_updateDeepest()
 
             # CTRL SHIFT DOWN
             when "CtrlShift-down"
@@ -469,10 +494,12 @@ class exports.CNEditor extends Backbone.View
                 e.preventDefault()
 
             # SHIFT TAB
-            when "CtrlShift-left" || "Shift-tab"
+            when "Shift-tab"
                 @shiftTab()
                 e.preventDefault()
-                #@_updateDeepest()
+            when "CtrlShift-left"
+                @shiftTab()
+                e.preventDefault()
             
             # TOGGLE LINE TYPE (Alt + a)                  
             when "Alt-A"
@@ -1780,6 +1807,7 @@ class exports.CNEditor extends Backbone.View
     #  - current html content
     #  - current selection
     #  - current scrollbar position
+    #  - the boolean newPosition
     ###
     
     # Add html code and selection markers to the history
@@ -1793,6 +1821,8 @@ class exports.CNEditor extends Backbone.View
             xcoord: @editorBody$.scrollTop()
             ycoord: @editorBody$.scrollLeft()
         @_history.historyScroll.push savedScroll
+        # save newPosition
+        @_history.historyPos.push @newPosition
         # 1- add the html content with markers to the history
         @_history.history.push @editorBody$.html()
         rangy.removeMarkers(savedSel)
@@ -1818,7 +1848,9 @@ class exports.CNEditor extends Backbone.View
                 @_addHistory()
                 # re-evaluate index
                 @_history.index -= 1
-                
+
+            # restore newPosition
+            @newPosition = @_history.historyPos[@_history.index]
             # 0 - restore html
             @editorBody$.html @_history.history[@_history.index]
             # 1 - restore selection
@@ -1840,6 +1872,8 @@ class exports.CNEditor extends Backbone.View
     reDo : () ->
         # if there is an action to redo
         if @redoPossible()
+            # restore newPosition
+            @newPosition = @_history.historyPos[@_history.index+1]
             # 0 - update the index
             @_history.index += 1
             # 1 - restore html
