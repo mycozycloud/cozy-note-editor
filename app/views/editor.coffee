@@ -1259,11 +1259,13 @@ class exports.CNEditor extends Backbone.View
             startLine.line$[0].removeChild( startLine.line$[0].lastChild)
         startFrag = endOfLineFragment.childNodes[0]
         myEndLine = startLine.line$[0].lastElementChild
-        if (startFrag.tagName == myEndLine.tagName == 'SPAN') and ((! $(startFrag).attr("class")? and ! $(myEndLine).attr("class")?) or ($(startFrag).attr("class") == $(myEndLine).attr("class")))
-            
-            startOffset = $(myEndLine).text().length
-            newText = $(myEndLine).text() + $(startFrag).text()
-            $(myEndLine).text( newText )
+        # whenever 2 span become adjacent and have same class
+        # they are merged into a single one
+        if startFrag.tagName == myEndLine.tagName == 'SPAN' and
+           startFrag.className == myEndLine.className             
+            startOffset = myEndLine.textContent.length
+            newText = myEndLine.textContent + startFrag.textContent
+            myEndLine.innerHTML = newText
             startContainer = myEndLine.firstChild
             
             l=1
@@ -1455,11 +1457,11 @@ class exports.CNEditor extends Backbone.View
     #   Only the first range of the selections is taken into account.
     #
     # Returns : 
-    #   sel : the selection
+    #   sel   : the selection
     #   range : the 1st range of the selections
     #   startLine : the 1st line of the range
-    #   endLine : the last line of the range
-    #   rangeIsEndLine : true if the range ends at the end of the last line
+    #   endLine   : the last line of the range
+    #   rangeIsEndLine   : true if the range ends at the end of the last line
     #   rangeIsStartLine : true if the range starts at the start of 1st line
     ###
     _findLinesAndIsStartIsEnd : () ->
@@ -1491,9 +1493,10 @@ class exports.CNEditor extends Backbone.View
                 # succession of span : maybe one day there will be a table for
                 # instance...)
                 rangeIsEndLine = false
-                # case of a textNode: it must have no nextSibling and offset must be its length
+                # case of a textNode: it must have no nextSibling
+                # and offset must be its length
                 if endContainer.nodeType == Node.TEXT_NODE
-                    rangeIsEndLine = endContainer.nextSibling == undefined and
+                    rangeIsEndLine = endContainer.nextSibling == null and
                                      initialEndOffset == endContainer.textContent.length
                 # case of another node : it must be a br; or followed by a br
                 #  and have maximal offset
@@ -1518,15 +1521,22 @@ class exports.CNEditor extends Backbone.View
             # 3- find startLine and rangeIsStartLine
             if startContainer.nodeName == 'DIV' # startContainer refers to a div of a line
                 startLine = @_lines[ startContainer.id ]
-                rangeIsStartLine = (initialStartOffset==0)
-                 #if initialStartOffset==1 and startContainer.innerHTML=="<span></span><br>" # startContainer is the br after an empty span
-                     #rangeIsStartLine = true
+                rangeIsStartLine = initialStartOffset == 0
+                
             else   # means the range starts inside a div (span, textNode...)
+            
                 startLine = @_lines[ $(startContainer).parents("div")[0].id ]
-                rangeIsStartLine = (initialStartOffset==0)
-                while rangeIsStartLine && parentEndContainer.nodeName != "DIV"
-                    rangeIsStartLine = (parentEndContainer.previousSibling==null)
-                    parentEndContainer = parentEndContainer.parentNode
+                # case of a textNode: it must have no previousSibling nor offset
+                if startContainer.nodeType == Node.TEXT_NODE
+                    rangeIsStartLine = endContainer.previousSibling == null and
+                                     initialStartOffset == 0
+                else
+                    rangeIsStartLine = initialStartOffset == 0
+                
+                parentStartContainer = startContainer.parentNode
+                while rangeIsStartLine && parentStartContainer.nodeName != "DIV"
+                    rangeIsStartLine = parentStartContainer.previousSibling == null
+                    parentStartContainer = parentStartContainer.parentNode
 
             # Special case of an "empty" line (<span><""></span><br>)
             if endLine.line$[0].innerHTML == "<span></span><br>"
