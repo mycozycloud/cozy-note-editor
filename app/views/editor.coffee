@@ -425,37 +425,35 @@ class exports.CNEditor extends Backbone.View
 
 
         # 2- manage the newPosition flag
-        #    newPosition == true if the position of carret or selection has been
+        #    newPosition == true if the position of caret or selection has been
         #    modified with keyboard or mouse.
         #    If newPosition == true, then the selection must be "normalized" :
-        #       - carret must be in a span
+        #       - caret must be in a span
         #       - selection must start and end in a span
 
+        # If the previous action was a move then "normalize" the selection.
+        # Selection is normalized only if an alphanumeric character or
+        # suppr/backspace/return is pressed on this new position
+        if @newPosition and shortcut in ['-other', '-space',
+                                         '-suppr', '-backspace', '-return']
+            @newPosition = false
+            # get the current range and normalize it
+            # TODO: following code is redundant but helpful for debugging
+            sel = @getEditorSelection()
+            range = sel.getRangeAt(0)
+            normalizedRange = rangy.createRange()
+            normalizedRange = @_normalize(range)
+
+            # update window selection so it is normalized
+            normalizedSel = @getEditorSelection()
+            normalizedSel.setSingleRange(normalizedRange)
+
+        
         # 2.1- Set a flag if the user moved the carret with keyboard
         if keyStrokesCode in ["return", "left","up","right","down","pgUp","pgDwn","end", "home"] and shortcut not in ['CtrlShift-down','CtrlShift-up']
             @newPosition = true
-            
-        #if there was no keyboard move action but the previous action was a move
-        # then "normalize" the selection
-        else
-            if @newPosition
-
-                # selection is normalized only if an alphanumeric character
-                # or suppr/backspace/return is pressed
-                if shortcut in ['-other', '-space', '-suppr', '-backspace']
-                    @newPosition = false
-                    # get the current range and normalize it
-                    # TODO: following code is redundant but helpful for debugging
-                    sel = @getEditorSelection()
-                    range = sel.getRangeAt(0)
-                    normalizedRange = rangy.createRange()
-                    normalizedRange = @_normalize(range)
-
-                    # update window selection so it is normalized
-                    normalizedSel = @getEditorSelection()
-                    normalizedSel.setSingleRange(normalizedRange)
-
-                
+ 
+        
         # 4- the current selection is initialized on each keypress
         this.currentSel = null
  
@@ -611,21 +609,26 @@ class exports.CNEditor extends Backbone.View
     ###
     titleList : () ->
         # 1- Variables
-        sel                 = @getEditorSelection()
-        range              = sel.getRangeAt(0)
-        startContainer     = range.startContainer
-        endContainer       = range.endContainer
-        initialStartOffset = range.startOffset
-        initialEndOffset   = range.endOffset
+        sel   = @getEditorSelection()
+        range = sel.getRangeAt(0)
+        
+        if range.startContainer.nodeName == 'BODY'
+            startDiv = range.startContainer.children[range.startOffset]
+        else
+            startDiv = range.startContainer
+        if range.endContainer.nodeName == "BODY"
+            endDiv = range.endContainer.children[range.endOffset-1]
+        else
+            endDiv   = range.endContainer
+
         # 2- find first and last div corresponding to the 1rst and
         #    last selected lines
-        startDiv = startContainer
         if startDiv.nodeName != "DIV"
             startDiv = $(startDiv).parents("div")[0]
-        endDiv = endContainer
         if endDiv.nodeName != "DIV"
             endDiv = $(endDiv).parents("div")[0]
         endLineID = endDiv.id
+        
         # 3- loop on each line between the firts and last line selected
         # TODO : deal the case of a multi range (multi selections). 
         #        Currently only the first range is taken into account.
@@ -664,20 +667,24 @@ class exports.CNEditor extends Backbone.View
             endLineID  = startDivID
         else
             range = @getEditorSelection().getRangeAt(0)
-            # what is this line doing down there?
-            # endContainer       = 
-            initialStartOffset = range.startOffset
-            initialEndOffset   = range.endOffset
+            if range.startContainer.nodeName == 'BODY'
+                startDiv = range.startContainer.children[range.startOffset]
+            else
+                startDiv = range.startContainer
+            if range.endContainer.nodeName == "BODY"
+                endDiv = range.endContainer.children[range.endOffset-1]
+            else
+                endDiv   = range.endContainer
+                
             # 2- find first and last div corresponding to the 1rst and
             #    last selected lines
-            startDiv = range.startContainer
             if startDiv.nodeName != "DIV"
                 startDiv = $(startDiv).parents("div")[0]
             startDivID =  startDiv.id
-            endDiv = range.endContainer
             if endDiv.nodeName != "DIV"
                 endDiv = $(endDiv).parents("div")[0]
             endLineID = endDiv.id
+            
         # 3- loop on each line between the firts and last line selected
         # TODO : deal the case of a multi range (multi selections). 
         #        Currently only the first range is taken into account.
@@ -761,19 +768,24 @@ class exports.CNEditor extends Backbone.View
         # 1- Variables
         sel                = @getEditorSelection()
         range              = sel.getRangeAt(0)
-        startContainer     = range.startContainer
-        endContainer       = range.endContainer
-        initialStartOffset = range.startOffset
-        initialEndOffset   = range.endOffset
+        
+        if range.startContainer.nodeName == 'BODY'
+            startDiv = range.startContainer.children[range.startOffset]
+        else
+            startDiv = range.startContainer
+        if range.endContainer.nodeName == "BODY"
+            endDiv = range.endContainer.children[range.endOffset-1]
+        else
+            endDiv   = range.endContainer
+
         # 2- find first and last div corresponding to the 1rst and
         #    last selected lines
-        startDiv = startContainer
         if startDiv.nodeName != "DIV"
             startDiv = $(startDiv).parents("div")[0]
-        endDiv = endContainer
         if endDiv.nodeName != "DIV"
             endDiv = $(endDiv).parents("div")[0]
         endLineID = endDiv.id
+        
         # 3- loop on each line between the firts and last line selected
         # TODO : deal the case of a multi range (multi selections). 
         #        Currently only the first range is taken into account.
@@ -852,10 +864,16 @@ class exports.CNEditor extends Backbone.View
             startDiv = l.line$[0]
             endDiv   = startDiv
         else
-            sel                = @getEditorSelection()
-            range    = sel.getRangeAt(0)
-            startDiv = range.startContainer
-            endDiv   = range.endContainer
+            sel   = @getEditorSelection()
+            range = sel.getRangeAt(0)
+            if range.startContainer.nodeName == 'BODY'
+                startDiv = range.startContainer.children[range.startOffset]
+            else
+                startDiv = range.startContainer
+            if range.endContainer.nodeName == "BODY"
+                endDiv = range.endContainer.children[range.endOffset-1]
+            else
+                endDiv   = range.endContainer
        
         # 2- find first and last div corresponding to the 1rst and
         #    last selected lines
@@ -962,10 +980,14 @@ class exports.CNEditor extends Backbone.View
             sel   = @getEditorSelection()
             range = sel.getRangeAt(0)
             
-        startDiv           = range.startContainer
-        endDiv             = range.endContainer
-        initialStartOffset = range.startOffset
-        initialEndOffset   = range.endOffset
+        if range.startContainer.nodeName == 'BODY'
+            startDiv = range.startContainer.children[range.startOffset]
+        else
+            startDiv = range.startContainer
+        if range.endContainer.nodeName == "BODY"
+            endDiv = range.endContainer.children[range.endOffset-1]
+        else
+            endDiv   = range.endContainer
         
         # 2- find first and last div corresponding to the 1rst and
         #    last selected lines
@@ -975,6 +997,8 @@ class exports.CNEditor extends Backbone.View
             endDiv = $(endDiv).parents("div")[0]
         endLineID = endDiv.id
         
+        
+                
         # 3- loop on each line between the firts and last line selected
         line = @_lines[startDiv.id]
         loop
@@ -1448,7 +1472,7 @@ class exports.CNEditor extends Backbone.View
             endContainer       = range.endContainer
             initialStartOffset = range.startOffset
             initialEndOffset   = range.endOffset
-            
+
             # 2- find endLine and the rangeIsEndLine
             # endContainer refers to a div of a line
             if endContainer.id? and endContainer.id.substr(0,5) == 'CNID_'
@@ -1572,20 +1596,64 @@ class exports.CNEditor extends Backbone.View
     # LINES MOTION MANAGEMENT
     # 
     # Functions to perform the motion of an entire block of lines
-    # TODO: bug: wrong selection restorations when moving the second line up
-    # TODO: correct re-insertion of the line swapped with the block
+    # TODO: bug : when doubleclicking on an end of line then moving this line
+    #             down, selection does not behaves as expected :-)
+    # TODO: correct behavior when moving the second line up
+    # TODO: correct behavior when moving the first line down
+    # TODO: improve re-insertion of the line swapped with the block
     ####
+
+    
+    ### ------------------------------------------------------------------------
+    # _moveLinesDown:
+    #
+    # -variables:
+    #    linePrev                                       linePrev
+    #    lineStart__________                            lineNext
+    #    |.                 | The block                 lineStart_______
+    #    |.                 | to move down      ==>     |.              |
+    #    lineEnd____________|                           |.              |
+    #    lineNext                                       lineEnd_________|
+    #
+    # -algorithm:
+    #    1.delete lineNext with _deleteMultilinesSelections()
+    #    2.insert lineNext between linePrev and lineStart
+    #    3.if lineNext is more indented than linePrev, untab lineNext
+    #      until it is ok
+    #    4.else (lineNext less indented than linePrev), select the block
+    #      (lineStart and some lines below) that is more indented than lineNext
+    #      and untab it until it is ok
+    ###
     _moveLinesDown : () ->
         
         # 0 - Set variables with informations on the selected lines
-        @_findLines()
-        sel = this.currentSel
-        lineStart = sel.startLine
-        lineEnd   = sel.endLine
+        sel   = @getEditorSelection()
+        range = sel.getRangeAt(0)
+        
+        if range.startContainer.nodeName == 'BODY'
+            startDiv = range.startContainer.children[range.startOffset]
+        else
+            startDiv = range.startContainer
+        if range.endContainer.nodeName == "BODY"
+            endDiv = range.endContainer.children[range.endOffset-1]
+        else
+            endDiv   = range.endContainer
+
+        # Find first and last div corresponding to the first and last
+        # selected lines
+        if startDiv.nodeName != "DIV"
+            startDiv = $(startDiv).parents("div")[0]
+        startLineID = startDiv.id
+        if endDiv.nodeName != "DIV"
+            endDiv = $(endDiv).parents("div")[0]
+        endLineID = endDiv.id
+        
+        lineStart = @_lines[startLineID]
+        lineEnd   = @_lines[endLineID]
         linePrev  = lineStart.linePrev
         lineNext  = lineEnd.lineNext
             
-        # if it isnt the last line
+        # if the last selected line (lineEnd) isnt the very last line
         if lineNext != null
             
             # 1 - save lineNext
@@ -1598,47 +1666,56 @@ class exports.CNEditor extends Backbone.View
                 linePrev     : lineNext.linePrev
                 lineNext     : lineNext.lineNext
 
-            savedSel = @saveEditorSelection()
+            # savedSel = @saveEditorSelection()
                 
-            # 2 - Delete the lowerline content then restore initial selection
+            # 2 - Delete lineNext content then restore initial selection
             @_deleteMultiLinesSelections(lineEnd, lineNext)
-            rangy.restoreSelection(savedSel)
             
-            # 3 - Restore the lowerline
+            # rangy.restoreSelection(savedSel)
+            
+            # 3 - Restore lineNext before the first selected line (lineStart)
             lineNext = cloneLine
             @_lines[lineNext.lineID] = lineNext
             
-            # 4 - Modify the linking
-            lineNext.linePrev = linePrev
+            # 4 - Modify the order of linking :
+            #        linePrev--lineNext--lineStart--lineEnd
+            lineNext.linePrev  = linePrev
             lineStart.linePrev = lineNext
             if lineNext.lineNext != null
                 lineNext.lineNext.linePrev = lineEnd
-            lineEnd.lineNext = lineNext.lineNext
+            lineEnd.lineNext  = lineNext.lineNext
             lineNext.lineNext = lineStart
             if linePrev != null
                 linePrev.lineNext = lineNext
-                
-            # 5 - Modify the DOM
+            
+            # 5 - Replace the lineNext line in the DOM
             lineStart.line$.before(lineNext.line$)
             
-            # 6-Re-insert properly lineNext before the start of the moved block
+            # 6 - Re-insert lineNext after the end of the moved block.
+            #     2 different configs of indentation may occur :
+            
             if linePrev == null then return
-            #6.1 if the swapped line is less indented than the block's prev line
+                
+            # 6.1 - The swapped line (lineNext) is less indented than
+            #       the block's prev line (linePrev)
             if lineNext.lineDepthAbs <= linePrev.lineDepthAbs
-                # create a range to select the block to untab (several times)
+                # find the last line to untab
                 line = lineNext
-                while (line.lineNext!=null and line.lineNext.lineDepthAbs>lineNext.lineDepthAbs)
+                while (line.lineNext!=null and
+                       line.lineNext.lineDepthAbs > lineNext.lineDepthAbs)
                     line = line.lineNext
                 if line.lineNext != null
                     line = line.lineNext
+                # select a block from first line to untab (lineStart)
+                #                  to last  line to untab (line)
                 myRange = rangy.createRange()
-                myRange.setStart(lineNext.lineNext.line$[0], 0)
+                myRange.setStart(lineStart.line$[0], 0)
                 myRange.setEnd(line.line$[0], 0)
-                # Now we untab the block selected.
-                numOfUntab=lineNext.lineNext.lineDepthAbs-lineStart.lineDepthAbs
+                # untab this selected block.
+                numOfUntab = lineStart.lineDepthAbs-lineNext.lineDepthAbs
                 if lineNext.lineNext.lineType[0]=='T'
                     # if linePrev is a 'T' and a 'T' follows, one untab less
-                    if lineStart.lineType[0]=='T'
+                    if lineStart.lineType[0] == 'T'
                         numOfUntab -= 1
                     # if linePrev is a 'L' and a 'T' follows, one untab more
                     else
@@ -1648,13 +1725,14 @@ class exports.CNEditor extends Backbone.View
                     @shiftTab(myRange)
                     numOfUntab -= 1
                     
-            #6.2 if the swapped line is more indented than the block's prev line
+            # 6.2 - The swapped line (lineNext) is more indented than
+            #       the block's prev line (linePrev)
             else
-                # untab the line (several times)
+                # untab lineNext
                 myRange = rangy.createRange()
                 myRange.setStart(lineNext.line$[0], 0)
                 myRange.setEnd(lineNext.line$[0], 0)
-                numOfUntab = lineStart.lineDepthAbs - lineNext.lineDepthAbs
+                numOfUntab = lineNext.lineDepthAbs - linePrev.lineDepthAbs
                 
                 if lineStart.lineType[0]=='T'
                     # if lineEnd is a 'T' and a 'T' follows, one untab less
@@ -1673,12 +1751,12 @@ class exports.CNEditor extends Backbone.View
     # _moveLinesUp:
     #
     # -variables:
-    #    linePrev
-    #    lineStart___________
-    #    |.                   The block
-    #    |.                   to move up
-    #    lineEnd_____________     
-    #    lineNext
+    #    linePrev                                   lineStart_________
+    #    lineStart__________                        |.                |
+    #    |.                 | The block             |.                |
+    #    |.                 | to move up     ==>    lineEnd___________|
+    #    lineEnd____________|                       linePrev
+    #    lineNext                                   lineNext
     #
     # -algorithm:
     #    1.delete linePrev with _deleteMultilinesSelections()
@@ -1692,14 +1770,33 @@ class exports.CNEditor extends Backbone.View
     _moveLinesUp : () ->
         
         # 0 - Set variables with informations on the selected lines
-        @_findLines()
-        sel = this.currentSel
-        lineStart = sel.startLine
-        lineEnd   = sel.endLine
+        sel   = @getEditorSelection()
+        range = sel.getRangeAt(0)
+        
+        if range.startContainer.nodeName == 'BODY'
+            startDiv = range.startContainer.children[range.startOffset]
+        else
+            startDiv = range.startContainer
+        if range.endContainer.nodeName == "BODY"
+            endDiv = range.endContainer.children[range.endOffset-1]
+        else
+            endDiv   = range.endContainer
+
+        # Find first and last div corresponding to the first and last
+        # selected lines
+        if startDiv.nodeName != "DIV"
+            startDiv = $(startDiv).parents("div")[0]
+        startLineID = startDiv.id
+        if endDiv.nodeName != "DIV"
+            endDiv = $(endDiv).parents("div")[0]
+        endLineID = endDiv.id
+        
+        lineStart = @_lines[startLineID]
+        lineEnd   = @_lines[endLineID]
         linePrev  = lineStart.linePrev
         lineNext  = lineEnd.lineNext
  
-        # if it isnt the first line
+        # if the first line selected (lineStart) isnt the very first line
         if linePrev != null
             
             # 0 - set boolean indicating if we are treating the second line
@@ -1715,14 +1812,15 @@ class exports.CNEditor extends Backbone.View
                 linePrev     : linePrev.linePrev
                 lineNext     : linePrev.lineNext
 
-            savedSel = @saveEditorSelection()
+            # savedSel = @saveEditorSelection()
             
-            # 2 - Delete the upperline content then restore initial selection
+            # 2 - Delete linePrev content then restore initial selection
             @_deleteMultiLinesSelections(linePrev.linePrev, linePrev)
-            rangy.restoreSelection(savedSel)
+            
+            # rangy.restoreSelection(savedSel)
 
-            # 3 - Restore the upperline
-            # 3.1 - if secondL is true, line objects must be fixed
+            # 3 - Restore linePrev below the last selected line (lineEnd )
+            # 3.1 - if isSecondLine, line objects must be fixed
             if isSecondLine
                 # remove the hidden element inserted by deleteMultiLines
                 $(linePrev.line$[0].firstElementChild).remove()
@@ -1732,37 +1830,43 @@ class exports.CNEditor extends Backbone.View
                 lineStart.line$.attr('id', lineStart.lineID)
                 @_lines[lineStart.lineID] = lineStart
                 
-            # 4 - Modify the linking
+            # 4 - Modify the order of linking:
+            #        lineStart--lineEnd--linePrev--lineNext
             linePrev = cloneLine
             @_lines[linePrev.lineID] = linePrev
             
             linePrev.lineNext = lineNext
-            lineEnd.lineNext = linePrev
+            lineEnd.lineNext  = linePrev
             if linePrev.linePrev != null
                 linePrev.linePrev.lineNext = lineStart
             lineStart.linePrev = linePrev.linePrev
-            linePrev.linePrev = lineEnd
+            linePrev.linePrev  = lineEnd
             if lineNext != null
                 lineNext.linePrev = linePrev
                 
-            # 5 - Modify the DOM
+            # 5 - Replace the linePrev line in the DOM
             lineEnd.line$.after(linePrev.line$)
 
-            # 6 - Re-insert properly linePrev after the end of the moved block
-            #6.1 if the swapped line is less indented than the block's last line
-            if linePrev.lineDepthAbs <= lineEnd.lineDepthAbs
-                # create a range to select the block to untab (several times)
+            # 6 - Re-insert linePrev after the end of the moved block.
+            #     2 different configs of indentation may occur :
+            # 6.1 - The swapped line (linePrev) is less indented than the
+            #       block's last line (lineEnd)
+            if linePrev.lineDepthAbs <= lineEnd.lineDepthAbs and lineNext!=null
+                # find last line to untab
                 line = linePrev
-                while (line.lineNext!=null and line.lineNext.lineDepthAbs>linePrev.lineDepthAbs)
+                while (line.lineNext!=null and
+                       line.lineNext.lineDepthAbs>linePrev.lineDepthAbs)
                     line = line.lineNext
                 if line.lineNext != null
                     line = line.lineNext
+                # select the block from first line to untab (lineNext)
+                #                    to last  line to untab (line)
                 myRange = rangy.createRange()
-                myRange.setStart(linePrev.lineNext.line$[0], 0)
+                myRange.setStart(lineNext.line$[0], 0)
                 myRange.setEnd(line.line$[0], 0)
-                # Now we untab the block selected.
-                numOfUntab = linePrev.lineNext.lineDepthAbs - linePrev.lineDepthAbs
-                if linePrev.lineNext.lineType[0]=='T'
+                # untab this selected block.
+                numOfUntab = lineNext.lineDepthAbs - linePrev.lineDepthAbs
+                if linePrev.lineNext.lineType[0] == 'T'
                     # if linePrev is a 'T' and a 'T' follows, one untab less
                     if linePrev.lineType[0]=='T'
                         numOfUntab -= 1
@@ -1774,17 +1878,18 @@ class exports.CNEditor extends Backbone.View
                     @shiftTab(myRange)
                     numOfUntab -= 1
                     
-            #6.2 if the swapped line is more indented than the block's last line
+            # 6.2 - The swapped line (linePrev) is more indented than
+            #       the block's last line (lineEnd)
             else
-                # untab the line (several times)
+                # untab linePrev
                 myRange = rangy.createRange()
                 myRange.setStart(linePrev.line$[0], 0)
                 myRange.setEnd(linePrev.line$[0], 0)
                 numOfUntab = linePrev.lineDepthAbs - lineEnd.lineDepthAbs
                 
-                if linePrev.lineType[0]=='T'
+                if linePrev.lineType[0] == 'T'
                     # if lineEnd is a 'T' and a 'T' follows, one untab less
-                    if lineEnd.lineType[0]=='T'
+                    if lineEnd.lineType[0] == 'T'
                         numOfUntab -= 1
                     # if lineEnd is a 'L' and a 'T' follows, one untab more
                     else
