@@ -1,5 +1,3 @@
-## TODO: fire an history event whenever a button is clicked
-
 ### ------------------------------------------------------------------------
 # CLASS FOR THE COZY NOTE EDITOR
 #
@@ -77,6 +75,8 @@ class exports.CNEditor extends Backbone.View
                 editorBody$.on 'keydown', @_keyPressListener
                 editorBody$.on 'keyup', () ->
                     iframe$.trigger jQuery.Event("onKeyUp")
+                editorBody$.on 'click', (e) =>
+                    @_lastKey = null
                 editorBody$.on 'paste', (e) =>
                     console.log "pasting..."
                     @paste(e)
@@ -124,6 +124,8 @@ class exports.CNEditor extends Backbone.View
                     @newPosition = true
                 editorBody$.on 'keyup', () ->
                     node$.trigger jQuery.Event("onKeyUp")
+                editorBody$.on 'click', (e) =>
+                    @_lastKey = null
                 editorBody$.on 'paste', (e) =>
                     console.log "pasting..."
                     @paste(e)
@@ -134,6 +136,8 @@ class exports.CNEditor extends Backbone.View
 
 
     ### ------------------------------------------------------------------------
+    # EXTENSION : _updateDeepest
+    # 
     # Find the maximal deep (thus the deepest line) of the text
     # TODO: improve it so it only calculates the new depth from the modified
     #       lines (not all of them)
@@ -145,7 +149,8 @@ class exports.CNEditor extends Backbone.View
         max = 1
         lines = @_lines
         for c of lines
-            if @editorBody$.children("#" + "#{lines[c].lineID}").length > 0 and lines[c].lineType == "Th" and lines[c].lineDepthAbs > max
+            if @editorBody$.children("#" + "#{lines[c].lineID}").length > 0 and
+               lines[c].lineType == "Th" and lines[c].lineDepthAbs > max
                 max = @_lines[c].lineDepthAbs
                 
         # Following code is way too ugly to be kept
@@ -175,7 +180,6 @@ class exports.CNEditor extends Backbone.View
         @_readHtml()
         #@_buildSummary()
     
-    
     ### ------------------------------------------------------------------------
     # Returns a markdown string representing the editor content
     ###
@@ -201,32 +205,38 @@ class exports.CNEditor extends Backbone.View
 
     ### ------------------------------------------------------------------------
     # UTILITY FUNCTIONS
-    # used to set ranges and normalize selection
+    # used to set ranges and help normalize selection
     # 
     # parameters: elt  :  a dom object with only textNode children
     #
     # note: with google chrome, it seems that non visible elements
-    #       cannot be selected with rangy and co (that's where 'blank' comes in)
+    #       cannot be selected with rangy (that's where 'blank' comes in)
     ###
     _putEndOnEnd : (range, elt) ->
         if elt.lastChild?
             offset = elt.lastChild.textContent.length
-            if offset == 0 then elt.lastChild.data = " "
+            if offset == 0
+                elt.lastChild.data = " "
+                offset = 1
             range.setEnd(elt.lastChild, offset)
         else
             blank = document.createTextNode " "
             elt.appendChild blank
-            range.setEnd(blank, 0)
+            range.setEnd(blank, 1)
+            # range.setEnd(elt, 0)
             
     _putStartOnEnd : (range, elt) ->
         if elt.lastChild?
             offset = elt.lastChild.textContent.length
-            if offset == 0 then elt.lastChild.data = " "
+            if offset == 0
+                elt.lastChild.data = " "
+                offset = 1
             range.setStart(elt.lastChild, offset)
         else
             blank = document.createTextNode " "
             elt.appendChild blank
             range.setStart(blank, 0)
+            # range.setStart(elt, 0)
             
     _putEndOnStart : (range, elt) ->
         if elt.firstChild?
@@ -237,6 +247,7 @@ class exports.CNEditor extends Backbone.View
             blank = document.createTextNode " "
             elt.appendChild blank
             range.setEnd(blank, 0)
+            # range.setEnd(elt, 0)
             
     _putStartOnStart : (range, elt) ->
         if elt.firstChild?
@@ -247,9 +258,38 @@ class exports.CNEditor extends Backbone.View
             blank = document.createTextNode " "
             elt.appendChild blank
             range.setStart(blank, 0)
-
+            # range.setStart(elt, 0)
             
+
+    ### ------------------------------------------------------------------------
+    #  _normalize(range)
+    # 
+    #  Modify 'range' containers and offsets so it represent a clean selection
+    #  that it starts inside a textNode and ends inside a textNode.
+    #
+    #  Set the flag isEmptyLine to true if an empty line is being normalized
+    #  so further suppr ~ backspace work properly.
+    #
+    # 
+    ###
     _normalize : (range) ->
+
+        # Check if the line was empty before normalization
+        if range.startContainer.nodeName == 'BODY'
+            startDiv = range.startContainer.children[range.startOffset]
+        else
+            startDiv = range.startContainer
+        if range.endContainer.nodeName == "BODY"
+            endDiv = range.endContainer.children[range.endOffset-1]
+        else
+            endDiv   = range.endContainer
+        if startDiv.nodeName != "DIV"
+            startDiv = $(startDiv).parents("div")[0]
+        if endDiv.nodeName != "DIV"
+            endDiv = $(endDiv).parents("div")[0]
+        if startDiv == endDiv and startDiv.innerHTML == '<span></span><br>'
+            @isEmptyLine = true
+
         
         startContainer = range.startContainer
         # 0. if startC is the body
@@ -258,9 +298,12 @@ class exports.CNEditor extends Backbone.View
             @_putStartOnStart(range, elt)
         # 1. if startC is a div
         else if startContainer.nodeName == "DIV"
-            
+            # 1.1 if line is empty
+            if @isEmptyLine
+                elt = startContainer.childNodes[0] # span
+                @_putStartOnStart(range, elt)
             # 1.1 if caret is between two children <div>|<></>|<></> <br> </div>
-            if range.startOffset < startContainer.childNodes.length - 1
+            else if range.startOffset < startContainer.childNodes.length - 1
                 # place caret at the beginning of the next child
                 elt = startContainer.childNodes[range.startOffset]
                 @_putStartOnStart(range, elt)
@@ -310,7 +353,7 @@ class exports.CNEditor extends Backbone.View
         # 2. if endC is a span, a, img
         else if endContainer.nodeName in ["SPAN","IMG","A"]
             # 2.0 if endC is empty
-            if endContainer.firstChild == null || endContainer.textContent.length == 0
+            if endContainer.firstChild==null || endContainer.textContent.length==0
                 @_putEndOnEnd(range, endContainer)
             # 2.1 if caret is between two textNode children
             if range.endOffset < endContainer.childNodes.length
@@ -328,9 +371,11 @@ class exports.CNEditor extends Backbone.View
         return range
 
 
-    
+
     ### ------------------------------------------------------------------------
-    #    The listener of keyPress event on the editor's iframe... the king !
+    #   _keyPressListener
+    # 
+    # The listener of keyPress event on the editor's iframe... the king !
     ###
     # 
     # Params :
@@ -342,7 +387,7 @@ class exports.CNEditor extends Backbone.View
     #   .shiftKey
     #   .keyCode
     ###
-    # SHORTCUT  |-----------------------> (suggestion: see jquery.hotkeys.js ? )
+    # SHORTCUT
     #
     # Definition of a shortcut : 
     #   a combination alt,ctrl,shift,meta
@@ -413,32 +458,40 @@ class exports.CNEditor extends Backbone.View
         # console.log e
         # console.log "ctrl #{e.ctrlKey}; Alt #{e.altKey}; Shift #{e.shiftKey}; which #{e.which}; keyCode #{e.keyCode}"
         # console.log "metaKeyStrokesCode:'#{metaKeyStrokesCode}' keyStrokesCode:'#{keyStrokesCode}'"
-
-
  
-        # Record last key pressed and eventually update the history
-        if @_lastKey != shortcut and shortcut in ["-tab", "-return", "-backspace", "-suppr", "CtrlShift-down", "CtrlShift-up", "Ctrl-C", "Shift-tab", "-space", "-other"]
+        # Record last pressed shortcut and eventually update the history
+        if @_lastKey != shortcut and
+           shortcut in ["-tab", "-return", "-backspace", "-suppr",
+                        "CtrlShift-down", "CtrlShift-up",
+                        "CtrlShift-left", "CtrlShift-right",
+                        "Ctrl-V", "Shift-tab", "-space", "-other"]
             @_addHistory()
            
         @_lastKey = shortcut
 
 
-
         # 2- manage the newPosition flag
         #    newPosition == true if the position of caret or selection has been
         #    modified with keyboard or mouse.
-        #    If newPosition == true, then the selection must be "normalized" :
+        #    If newPosition == true and a character is typed or a suppression
+        #    key is pressed, then selection must be "normalized" before
         #       - caret must be in a span
         #       - selection must start and end in a span
-
+        # 
+        #    Note : in Google Chrome, normalization couldn't place the selection
+        #      inside an empty node, so whenever it happens, we create a " "
+        #      textNode at this location, then selection is adjusted.
+        #      I'm afraid this operation is not that safe.
+        
         # If the previous action was a move then "normalize" the selection.
         # Selection is normalized only if an alphanumeric character or
         # suppr/backspace/return is pressed on this new position
         if @newPosition and shortcut in ['-other', '-space',
                                          '-suppr', '-backspace', '-return']
+        # if @newPosition
             @newPosition = false
             # get the current range and normalize it
-            # TODO: following code is redundant but helpful for debugging
+            # (following code is redundant but helpful for debugging)
             sel = @getEditorSelection()
             range = sel.getRangeAt(0)
             normalizedRange = rangy.createRange()
@@ -450,13 +503,15 @@ class exports.CNEditor extends Backbone.View
 
         
         # 2.1- Set a flag if the user moved the carret with keyboard
-        if keyStrokesCode in ["return", "left","up","right","down","pgUp","pgDwn","end", "home"] and shortcut not in ['CtrlShift-down','CtrlShift-up']
+        if keyStrokesCode in ["left","up","right","down",
+                              "pgUp","pgDwn","end", "home",
+                              "return", "suppr", "backspace"] and
+           shortcut not in ["CtrlShift-down", "CtrlShift-up",
+                            "CtrlShift-right", "CtrlShift-left"]
             @newPosition = true
- 
         
         # 4- the current selection is initialized on each keypress
         this.currentSel = null
- 
                  
         # 5- launch the action corresponding to the pressed shortcut
         switch shortcut
@@ -464,7 +519,6 @@ class exports.CNEditor extends Backbone.View
             when "-return"
                 @_return()
                 e.preventDefault()
-            
             # TAB
             when "-tab"
                 @tab()
@@ -472,25 +526,20 @@ class exports.CNEditor extends Backbone.View
             when "CtrlShift-right"
                 @tab()
                 e.preventDefault()
-            
             # BACKSPACE
             when "-backspace"
                 @_backspace(e)
-            
             # SUPPR
             when "-suppr"
                 @_suppr(e)
-
             # CTRL SHIFT DOWN
             when "CtrlShift-down"
                 @_moveLinesDown()
                 e.preventDefault()
-
             # CTRL SHIFT UP
             when "CtrlShift-up"
                 @_moveLinesUp()
                 e.preventDefault()
-
             # SHIFT TAB
             when "Shift-tab"
                 @shiftTab()
@@ -498,44 +547,40 @@ class exports.CNEditor extends Backbone.View
             when "CtrlShift-left"
                 @shiftTab()
                 e.preventDefault()
-            
             # TOGGLE LINE TYPE (Alt + a)                  
             when "Alt-A"
                 @_toggleLineType()
                 e.preventDefault()
-            
             # PASTE (Ctrl + v)                  
             when "Ctrl-V"
                 true
-                #@_updateDeepest()
-            
             # SAVE (Ctrl + s)                  
             when "Ctrl-S"
-                # TODO
-                # console.log "TODO : SAVE"
+                $(@editorTarget).trigger jQuery.Event("saveRequest")
                 e.preventDefault()
-
             # UNDO (Ctrl + z)
             when "Ctrl-Z"
                 e.preventDefault()
                 @unDo()
-                
             # REDO (Ctrl + y)
             when "Ctrl-Y"
                 e.preventDefault()
                 @reDo()
-
             
 
     ### ------------------------------------------------------------------------
+    #  _suppr :
+    # 
     # Manage deletions when suppr key is pressed
     ###
-    #
-    # TODO: bug: a suppr operated before an empty line removes the <br> label
     _suppr : (e) ->
         @_findLinesAndIsStartIsEnd()
         sel = this.currentSel
 
+        if @isEmptyLine
+            @isEmptyLine = false
+            sel.range.deleteContents()
+            
         startLine = sel.startLine
         # 1- Case of a caret "alone" (no selection)
         if sel.range.collapsed
@@ -567,11 +612,19 @@ class exports.CNEditor extends Backbone.View
 
 
     ### ------------------------------------------------------------------------
-    #  Manage deletions when backspace key is pressed
+    #  _backspace
+    # 
+    # Manage deletions when backspace key is pressed
     ###
     _backspace : (e) ->
         @_findLinesAndIsStartIsEnd()
+
         sel = this.currentSel
+
+        if @isEmptyLine
+            @isEmptyLine = false
+            sel.range.deleteContents()
+                    
         startLine = sel.startLine
 
         # 1- Case of a caret "alone" (no selection)
@@ -605,7 +658,9 @@ class exports.CNEditor extends Backbone.View
 
 
     ### ------------------------------------------------------------------------
-    #  Turn selected lines in a title List (Th)
+    #  titleList
+    # 
+    # Turn selected lines in a title List (Th)
     ###
     titleList : () ->
         # 1- Variables
@@ -643,6 +698,8 @@ class exports.CNEditor extends Backbone.View
 
 
     ### ------------------------------------------------------------------------
+    #  _line2titleList
+    # 
     #  Turn a given line in a title List Line (Th)
     ###
     _line2titleList : (line)->
@@ -658,6 +715,8 @@ class exports.CNEditor extends Backbone.View
 
 
     ### ------------------------------------------------------------------------
+    #  markerList
+    # 
     #  Turn selected lines in a Marker List
     ###
     markerList : (l) ->
@@ -736,6 +795,8 @@ class exports.CNEditor extends Backbone.View
 
 
     ### ------------------------------------------------------------------------
+    #  _findDepthRel
+    # 
     # Calculates the relative depth of the line
     #   usage   : cycle : Tu => To => Lx => Th
     #   param   : line : the line we want to find the relative depth
@@ -759,6 +820,8 @@ class exports.CNEditor extends Backbone.View
 
 
     ### ------------------------------------------------------------------------
+    #  _toggleLineType
+    # 
     # Toggle line type
     #   usage : cycle : Tu => To => Lx => Th
     #   param :
@@ -766,8 +829,8 @@ class exports.CNEditor extends Backbone.View
     ###
     _toggleLineType : () ->
         # 1- Variables
-        sel                = @getEditorSelection()
-        range              = sel.getRangeAt(0)
+        sel   = @getEditorSelection()
+        range = sel.getRangeAt(0)
         
         if range.startContainer.nodeName == 'BODY'
             startDiv = range.startContainer.children[range.startOffset]
@@ -855,6 +918,8 @@ class exports.CNEditor extends Backbone.View
 
 
     ### ------------------------------------------------------------------------
+    #  tab
+    # 
     # tab keypress
     #   l = optional : a line to indent. If none, the selection will be indented
     ###
@@ -968,8 +1033,8 @@ class exports.CNEditor extends Backbone.View
 
 
     ### ------------------------------------------------------------------------
-    # shift + tab keypress
-    #   myRange = if defined, refers to a specific region to untab
+    #  shiftTab
+    #   param : myRange : if defined, refers to a specific region to untab
     ###
     shiftTab : (myRange) ->
 
@@ -997,8 +1062,6 @@ class exports.CNEditor extends Backbone.View
             endDiv = $(endDiv).parents("div")[0]
         endLineID = endDiv.id
         
-        
-                
         # 3- loop on each line between the firts and last line selected
         line = @_lines[startDiv.id]
         loop
@@ -1039,6 +1102,7 @@ class exports.CNEditor extends Backbone.View
                 line = line.lineNext
 
     ### ------------------------------------------------------------------------
+    #  _return
     # return keypress
     #   e = event
     ###
@@ -1108,6 +1172,8 @@ class exports.CNEditor extends Backbone.View
 
 
     ### ------------------------------------------------------------------------
+    #  _titilizeSiblings
+    # 
     # turn in Th or Lh of the siblings of line (and line itself of course)
     # the children are note modified
     ### 
@@ -1145,6 +1211,8 @@ class exports.CNEditor extends Backbone.View
 
 
     ### ------------------------------------------------------------------------
+    #  _findParent1stSibling
+    # 
     # find the sibling line of the parent of line that is the first of the list
     # ex :
     #   . Sibling1 <= _findParent1stSibling(line)
@@ -1172,6 +1240,8 @@ class exports.CNEditor extends Backbone.View
 
 
     ### ------------------------------------------------------------------------
+    #  _findPrevSibling
+    # 
     # find the previous sibling line.
     # returns null if no previous sibling, the line otherwise
     # the sibling is a title (Th, Tu or To), not a line (Lh nor Lu nor Lo)
@@ -1195,6 +1265,8 @@ class exports.CNEditor extends Backbone.View
 
 
     ### ------------------------------------------------------------------------
+    #  _deleteMultiLinesSelections
+    # 
     # Delete the user multi line selection
     #
     # prerequisite : at least 2 lines must be selected
@@ -1330,6 +1402,8 @@ class exports.CNEditor extends Backbone.View
         
                 
     ### ------------------------------------------------------------------------
+    #  _insertLineAfter
+    # 
     # Insert a line after a source line
     # p = 
     #     sourceLineID       : ID of the line after which the line will be added
@@ -1364,8 +1438,9 @@ class exports.CNEditor extends Backbone.View
         return newLine
 
 
-
     ### ------------------------------------------------------------------------
+    #  _insertLineBefore
+    # 
     # Insert a line before a source line
     # p = 
     #     sourceLineID       : ID of the line before which a line will be added
@@ -1401,6 +1476,8 @@ class exports.CNEditor extends Backbone.View
 
 
     ### ------------------------------------------------------------------------
+    #  _findLines
+    #  
     # Finds :
     #   First and last line of selection. 
     # Remark :
@@ -1448,6 +1525,8 @@ class exports.CNEditor extends Backbone.View
 
 
     ### ------------------------------------------------------------------------
+    #  _findLinesAndIsStartIsEnd
+    # 
     # Finds :
     #   first and last line of selection 
     #   wheter the selection starts at the beginning of startLine or not
@@ -1481,12 +1560,11 @@ class exports.CNEditor extends Backbone.View
                 endLine = @_lines[ endContainer.id ]
                 # rangeIsEndLine if endOffset points on the last node of the div
                 # or on the one before the last which is a <br>
-                rangeIsEndLine = ( endContainer.children.length-1==initialEndOffset ) or
-                                 (endContainer.children[initialEndOffset].nodeName=="BR")
+                rangeIsEndLine = endContainer.children.length-1==initialEndOffset or
+                                 endContainer.children[initialEndOffset].nodeName=="BR"
             # means the range ends inside a div (span, textNode...)
             else
                 endLine = @_lines[ $(endContainer).parents("div")[0].id ]
-                parentEndContainer = endContainer
                 # rangeIsEndLine if the selection is at the end of the
                 # endContainer and of each of its parents (this approach is more
                 # robust than just considering that the line is a flat
@@ -1498,12 +1576,11 @@ class exports.CNEditor extends Backbone.View
                 if endContainer.nodeType == Node.TEXT_NODE
                     rangeIsEndLine = endContainer.nextSibling == null and
                                      initialEndOffset == endContainer.textContent.length
-                # case of another node : it must be a br; or followed by a br
-                #  and have maximal offset
+                # case of another node : it must be a br;
+                # or be followed by a br and have maximal offset.
                 else
-                    nextSibling    = endContainer.nextSibling
                     rangeIsEndLine = endContainer.nodeName=='BR' or
-                                     (nextSibling.nodeName=='BR' and
+                                     (endContainer.nextSibling.nodeName=='BR' and
                                      endContainer.childNodes.length==initialEndOffset)
                     #nextSibling    = endContainer.nextSibling
                     #rangeIsEndLine = (nextSibling == null or nextSibling.nodeName=='BR')
@@ -1512,10 +1589,10 @@ class exports.CNEditor extends Backbone.View
                 parentEndContainer = endContainer.parentNode
                 while rangeIsEndLine and parentEndContainer.nodeName != "DIV"
                     nextSibling = parentEndContainer.nextSibling
-                    #rangeIsEndLine = (nextSibling == null or nextSibling.nodeName=='BR')
-                    rangeIsEndLine = endContainer.nodeName=='BR' or
-                                     (nextSibling.nodeName=='BR' and
-                                     endContainer.childNodes.length==initialEndOffset)
+                    rangeIsEndLine = (nextSibling == null or nextSibling.nodeName=='BR')
+                    # rangeIsEndLine = endContainer.nodeName=='BR' or
+                    #                  (nextSibling.nodeName=='BR' and
+                    #                  endContainer.childNodes.length==initialEndOffset)
                     parentEndContainer = parentEndContainer.parentNode
             
             # 3- find startLine and rangeIsStartLine
@@ -1529,7 +1606,7 @@ class exports.CNEditor extends Backbone.View
                 # case of a textNode: it must have no previousSibling nor offset
                 if startContainer.nodeType == Node.TEXT_NODE
                     rangeIsStartLine = endContainer.previousSibling == null and
-                                     initialStartOffset == 0
+                                       initialStartOffset == 0
                 else
                     rangeIsStartLine = initialStartOffset == 0
                 
@@ -1545,6 +1622,7 @@ class exports.CNEditor extends Backbone.View
                 rangeIsStartLine = true
 
             # 4- return
+            
             this.currentSel = 
                 sel              : sel
                 range            : range
@@ -1557,6 +1635,8 @@ class exports.CNEditor extends Backbone.View
 
 
     ###  -----------------------------------------------------------------------
+    #   _readHtml
+    # 
     # Parse a raw html inserted in the iframe in order to update the controler
     ###
     _readHtml : () ->
@@ -1601,13 +1681,12 @@ class exports.CNEditor extends Backbone.View
         @_highestId = lineID
 
 
-
     ### ------------------------------------------------------------------------
     # LINES MOTION MANAGEMENT
     # 
     # Functions to perform the motion of an entire block of lines
-    # TODO: bug : when doubleclicking on an end of line then moving this line
-    #             down, selection does not behaves as expected :-)
+    # BUG : when doubleclicking on an end of line then moving this line
+    #       down, selection does not behaves as expected :-)
     # TODO: correct behavior when moving the second line up
     # TODO: correct behavior when moving the first line down
     # TODO: improve re-insertion of the line swapped with the block
@@ -1912,7 +1991,7 @@ class exports.CNEditor extends Backbone.View
 
     ### ------------------------------------------------------------------------
     #  HISTORY MANAGEMENT:
-    # 1. _addHistory (Add html code and selection markers to the history)
+    # 1. _addHistory (Save html code, selection markers, positions...)
     # 2. undoPossible (Return true only if unDo can be called)
     # 3. redoPossible (Return true only if reDo can be called)
     # 4. unDo (Undo the previous action)
@@ -1924,8 +2003,12 @@ class exports.CNEditor extends Backbone.View
     #  - current scrollbar position
     #  - the boolean newPosition
     ###
-    
-    # Add html code and selection markers to the history
+
+    ### -------------------------------------------------------------------------
+    #  _addHistory
+    # 
+    # Add html code and selection markers and scrollbar positions to the history
+    ###
     _addHistory : () ->
         # 0 - mark selection
         savedSel = @saveEditorSelection()
@@ -1944,16 +2027,24 @@ class exports.CNEditor extends Backbone.View
         # 2 - update the index
         @_history.index = @_history.history.length-1
 
-
+    ### -------------------------------------------------------------------------
+    #  undoPossible
     # Return true only if unDo can be called
+    ###
     undoPossible : () ->
         return (@_history.index > 0)
 
+    ### -------------------------------------------------------------------------
+    #  redoPossible
     # Return true only if reDo can be called
+    ###
     redoPossible : () ->
         return (@_history.index < @_history.history.length-2)
-        
-    # unDo : Undo the previous action
+
+    ### -------------------------------------------------------------------------
+    #  unDo :
+    # Undo the previous action
+    ###
     unDo : () ->
         # if there is an action to undo
         if @undoPossible()
@@ -1982,8 +2073,10 @@ class exports.CNEditor extends Backbone.View
             # 4 - update the index
             @_history.index -= 1
 
-
-    # reDo : Redo a undo-ed action
+    ### -------------------------------------------------------------------------
+    #  reDo :
+    # Redo a undo-ed action
+    ###
     reDo : () ->
         # if there is an action to redo
         if @redoPossible()
@@ -2007,7 +2100,7 @@ class exports.CNEditor extends Backbone.View
 
 
     ### ------------------------------------------------------------------------
-    # SUMMARY MANAGEMENT
+    # EXTENSION  :  auto-summary management and upkeep
     # 
     # initialization
     # TODO: avoid updating the summary too often
@@ -2021,9 +2114,8 @@ class exports.CNEditor extends Backbone.View
             summary.attr('id', 'navi')
             summary.prependTo @editorBody$
         return summary
-    ###
+        
     # Summary upkeep
-    ###
     _buildSummary : () ->
         summary = @initSummary()
         @editorBody$.children("#navi").children().remove()
@@ -2033,9 +2125,8 @@ class exports.CNEditor extends Backbone.View
                 lines[c].line$.clone().appendTo summary
 
 
-
     ### ------------------------------------------------------------------------
-    #  DECORATION FUNCTIONS (bold/italic/underlined/quote)
+    #  EXTENSION  :  DECORATION FUNCTIONS (bold/italic/underlined/quote)
     #  TODO
     ###
 
@@ -2127,13 +2218,15 @@ class exports.CNEditor extends Backbone.View
     #           a string of editor html code)
     ###
 
-    #
-    #  WARNING: an odd bug occurs around the 19-th line in the example :
+    #  BUG --> : an odd bug occurs around the 19-th line in the example :
     #           ./templates/content-shortlines-marker
     #           (there are some empty lines around)
-    # 
+     
+    ### ------------------------------------------------------------------------
+    #  _cozy2md
     # Read a string of editor html code format and turns it into a string in
     #  markdown format
+    ###
     _cozy2md : (text) ->
         
         # Writes the string into a jQuery object
@@ -2229,8 +2322,10 @@ class exports.CNEditor extends Backbone.View
         return markCode
 
 
+    ### ------------------------------------------------------------------------
     # Read a string of html code given by showdown and turns it into a string
     # of editor html code
+    ###
     _md2cozy: (text) ->
     
         conv = new Showdown.converter()
@@ -2310,7 +2405,10 @@ class exports.CNEditor extends Backbone.View
         return cozyCode
 
 
-    # CLEANED UP HTML PARSING
+    ### ------------------------------------------------------------------------
+    # EXTENSION  :  cleaned up HTML parsing
+    #
+    #  (TODO)
     # 
     # We suppose the html treated here has already been sanitized so the DOM
     #  structure is coherent and not twisted
@@ -2338,6 +2436,8 @@ class exports.CNEditor extends Backbone.View
     #  6- relative indentation preserved with imbrication of paragraphs P
     #  7- any other elt is turned into a simple SPAN with a textContent
     #  8- IFRAME, FRAME, SCRIPT are ignored
+    ####
+    
     # _parseHtml : (htmlFrag) ->
         
         # result = ''
