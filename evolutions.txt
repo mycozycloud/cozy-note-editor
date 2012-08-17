@@ -1,0 +1,79 @@
+A list of cool and useful ideas of evolution :
+
+____________________
+I - History (l.1936)
+
+ → size should be limited (on the current version it is not)
+
+ → clicking should interrupt the 'duplication prevention' mechanism
+   example:
+   * when I type 'azertyuiiop'
+   * then click somewhere else
+   * then type 'azertyfdsq'
+   * then perform an undo (ctrl-z)
+   * poof! both strings are deleted.
+   This could be a solution :
+      the property 'lastKey' of the editor should be reset 
+      at 'null' on each click. (fixed this l.78 & l.127)
+
+ → if cozy-notes integrates icons for the functions undo and redo,
+   these buttons can be activated/deactivated thanks to the methods
+   undoPossible() and redoPossible()
+   (they return true only if undo/redo can be called)
+   note: it may be more simple if these informations were given by properties
+         rather than methods...
+
+
+_________________
+II - Save (l.512)
+
+ → the shortcut Ctrl-s makes the element nesting the editor 
+   fire an event 'saveRequest' so cozy-notes can save the note.
+   cozy-notes doesnt do it yet !
+
+
+____________________
+III - Paste (l.2077)
+
+ → in the current version, a ctrl-v only fetches the clipboard's content
+   this content should be cleaned (see beautify.js) then this cleaned html
+   should be parsed (I started to think about this parsing, see l.2351 in 
+   source code)
+
+   → first step : parse the html string and convert it into our format
+
+   → second step : restitute the initial structure by giving pasted content
+     appropriate indentation and classes
+
+ → another good idea: convert clipboard content to markdown, then turn it back
+   into our own format.
+
+
+___________________________
+IV - firstLine, deepestLine
+
+ → a pointer to the first line of the editor should be upkeeped
+
+ → for automatic styles, the maximal depth should be upkeeped too
+
+
+__________________________________
+V - linemotion management (l.1634)
+
+ → choose a behavior when re-inserting the swapped line
+
+
+_________________________
+VI - autosummary (l.2049)
+
+ → beware, the summary must not "nav" as an id or firefox(v.13+) will add 
+   an odd style to it
+
+
+_____________
+And beyond...
+
+ → the library pagedown can replace showdown 
+   (just in case showdown is not sufficient)
+
+ → for hotkeys management see jquery.hotkeys.js or keymaster.js 

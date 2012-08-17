@@ -1560,8 +1560,7 @@ class exports.CNEditor extends Backbone.View
                 endLine = @_lines[ endContainer.id ]
                 # rangeIsEndLine if endOffset points on the last node of the div
                 # or on the one before the last which is a <br>
-                rangeIsEndLine = endContainer.children.length-1==initialEndOffset or
-                                 endContainer.children[initialEndOffset].nodeName=="BR"
+                rangeIsEndLine = endContainer.children.length < initialEndOffset or endContainer.children[initialEndOffset].nodeName=="BR"
             # means the range ends inside a div (span, textNode...)
             else
                 endLine = @_lines[ $(endContainer).parents("div")[0].id ]
