@@ -21,6 +21,7 @@
 #   _highestId        : 
 #   _firstLine        : pointes the first line : TODO : not taken into account 
 ###
+
 class exports.CNEditor extends Backbone.View
 
     ###
@@ -1913,35 +1914,36 @@ class exports.CNEditor extends Backbone.View
     # 4 - restore selection
     # 5 - insert cleaned content is behind the cursor position.........TODO
     ###
+    ###*
+     * init the div where the browser will actualy paste.
+     * @return {obj} a ref to the pasted content
+    ###
     _initClipBoard : () ->
-        clipboard = @editorBody$.children("#my-clipboard-sandbox")
-        if clipboard.length == 0
+        clipboard = @editorBody$.children("#clipboard-sandbox")
+        if clipboard.length == 0   # TODO BJA should be done once at initialisation of
             clipboard = $ document.createElement('div')
-            clipboard.attr('contenteditable', true)
-            clipboard.attr('display', "none")
+            # clipboard.attr('contenteditable', true)
+            clipboard.attr('display', "none") # TODO BJA : this attributes doesn't exist : should be removed ?
             clipboard.html 'hello txt'
-            clipboard.attr('id', "my-clipboard-sandbox")
+            clipboard.attr('id', "clipboard-sandbox")
             getOffTheScreen =
-                left: -1000
-                top: -1000
+                left: 300  # -1000
+                top : 10   # -1000
             clipboard.offset getOffTheScreen
             clipboard.prependTo @editorBody$
         return clipboard[0]
      
     paste : (event) ->
-        # get 
+        # init the div where the paste will actualy accur. 
         mySandBox = @_initClipBoard()
         # save current selection
-        #savedSel = rangy.saveSelection(rangy.dom.getIframeWindow @editorIframe)
         savedSel = @saveEditorSelection()
         # move carret into the sandbox
-        
         range = rangy.createRange()
         range.selectNodeContents mySandBox
         #sel = rangy.getIframeSelection @editorIframe
-        sel                = @getEditorSelection()
+        sel = @getEditorSelection()
         sel.setSingleRange range
-        
         # check whether the browser is a Webkit or not
         if event and event.clipboardData and event.clipboardData.getData
             # Webkit: 1 - get data from clipboard
@@ -1971,18 +1973,45 @@ class exports.CNEditor extends Backbone.View
         ( waitforpastedata = (elem) ->
             if elem.childNodes and elem.childNodes.length > 0
                 # again, something is missing during the restoration
-                rangy.restoreSelection(savedSel)
                 processpaste(sandbox)
+                rangy.restoreSelection(savedSel)
             else
                 that = {e: elem}
                 that.callself = () ->
                     waitforpastedata that.e
                 setTimeout(that.callself, 10) )(sandbox)
             
-    _processPaste : (sandbox) ->
+    _processPaste : (sandbox) =>
         pasteddata = sandbox.innerHTML
-        sandbox.innerHTML = ""
         console.log(pasteddata)
+        # sandbox.innerHTML = "" # commented for tests.
+
+        # sanitize with node-validator 
+        # (https://github.com/chriso/node-validator)
+        # may be improved with google caja sanitizer :
+        # http://code.google.com/p/google-caja/wiki/JsHtmlSanitizer
+        str = sanitize(pasteddata).xss();
+        sandbox.innerHTML = pasteddata
+        # insert
+        console.log "TTTTTTMMMMMMMRRRRRRRRRRRMMMMMOUOUOUUOOUZZ"
+        console.log sandbox
+        htmlStr = @_domWalk(sandbox)
+        console.log htmlStr
+
+    _domWalk : (elemt) ->
+        result = ""
+        for child in elemt.children
+            if child.children.length == 0
+                txt = child.textContent
+                result += "<span>"+txt+"</span>\n"
+            else
+                result += @_domWalk(child)
+        return result    
+        
+
+
+        # position carret
+
         
    
     ### ------------------------------------------------------------------------
