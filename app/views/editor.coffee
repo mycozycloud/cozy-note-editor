@@ -1288,9 +1288,12 @@ class exports.CNEditor extends Backbone.View
                 
     ### ------------------------------------------------------------------------
     # Insert a line after a source line
+    # The lien will be inserted in the parent of the source line (which can be 
+    # the editor or a fragment in the case of the paste for instance)
     # p = 
     #     sourceLine         : line after which the line will be added
     #     fragment           : [optionnal] - an html fragment that will be added
+    #                          in the div of the line.
     #     innerHTML          : [optionnal] - an html string that will be added
     #     targetLineType     : type of the line to add
     #     targetLineDepthAbs : absolute depth of the line to add
@@ -2004,6 +2007,7 @@ class exports.CNEditor extends Backbone.View
         # http://code.google.com/p/google-caja/wiki/JsHtmlSanitizer
         str = sanitize(pasteddata).xss();
         sandbox.innerHTML = pasteddata
+        
         # insert
         console.log "TTTTTTMMMMMMMRRRRRRRRRRRMMMMMOUOUOUUOOUZZ"
         console.log sandbox
@@ -2017,11 +2021,18 @@ class exports.CNEditor extends Backbone.View
         frag.appendChild(dummyLine.line$[0])
 
         # 
+        currentLineFrag = document.createDocumentFragment()
         domWalkContext = 
             absDepth           : currSel.startLine.lineDepthAbs,
             prevHxLevel        : null,
-            prevCNLineAbsDepth : null, # previous Cozy Note Line Abs Depth
+            # previous Cozy Note Line Abs Depth
+            prevCNLineAbsDepth : null, 
+            # last line added in the editor (ed.lines)
             lastAddedLine      : dummyLine
+            # line that is under construction
+            currentLineFrag     : currentLineFrag
+            # last element of currentLineFrag being populated by _domWalk
+            currentLineEl       : currentLineFrag
         htmlStr = @_domWalk(sandbox,domWalkContext)
         
         # delete dummy line from the fragment
@@ -2034,7 +2045,7 @@ class exports.CNEditor extends Backbone.View
         
         # 1- Delete the selections so that the selection is collapsed
         if currSel.range.collapsed
-            
+            # nothing to do
         else if endLine == startLine
             currSel.range.deleteContents()
         else
@@ -2046,8 +2057,10 @@ class exports.CNEditor extends Backbone.View
         targetNode  = currSel.range.startContainer
         startOffset = currSel.range.startOffset
         i=0
-        while i < frag.childNodes[0].childNodes.length-1
-            elToInsert = frag.firstChild.childNodes[i]
+        lineElements = frag.firstChild.childNodes
+        nbElements = lineElements.length
+        while i < nbElements-1
+            elToInsert = lineElements[i]
             i +=1
             # targeNode is a TextNode or a SPAN
             # targetNode is a A
@@ -2079,22 +2092,26 @@ class exports.CNEditor extends Backbone.View
 
 
 
+        # 3- if the clipboard has more than one line, insert the end of target
+        #    line in the last line of frag and delete it
+        if frag.childNodes.length > 1
+            range = document.createRange()
+            range.setStart(targetNode,startOffset)
+            parendDiv = targetNode
+            while parendDiv.tagName != 'DIV'
+                parendDiv = parendDiv.parentElement
+            range.setEnd(parendDiv,parendDiv.children.length-1)
+            endTargetLineFrag = range.extractContents()
+            range.detach()
+            this._insertFrag(
+                frag.lastChild, 
+                frag.lastChild.children.length-1, 
+                endTargetLineFrag)
 
-        # 3- Insert the end of target line in the last line of frag
-        # targetNode  = currSel.range.startContainer
-        # startOffset = currSel.range.startOffset
 
-        if targetNode.nodeType == Node.TEXT_NODE
-            
-
-
-
-
-
-
-        i=0
-        while i < targetNode.childNodes.length-1
-            elToInsert = frag.childNodes[0].childNodes[i]
+        # i=0
+        # while i < targetNode.childNodes.length-1
+        #     elToInsert = frag.childNodes[0].childNodes[i]
 
         # remove the firstAddedLine from the fragment
         firstAddedLine = dummyLine.lineNext
@@ -2118,16 +2135,176 @@ class exports.CNEditor extends Backbone.View
 
 
         console.log htmlStr
+        console.log 'prtprtprt!!!!'
 
 
+
+
+
+
+    _insertFrag : (startContainer, startOffset, frag) ->
+            # lineDiv = startContainer
+            # while lineDiv.tagName != 'DIV'
+            #     lineDiv = lineDiv.parentElement
+            range = document.createRange()
+            range.setStart(startContainer,startOffset)
+            range.setEnd(startContainer,startOffset)
+            range.insertNode(frag)
+
+
+
+
+
+    ###*
+     * Walks thoug an html tree in order to convert it in a strutured content
+     * that fit to a note structure.
+     * @param  {html element} elemt   Reference to an html element to be parsed
+     * @param  {object} context _domWalk is recursive and its context of execution
+     *                  is kept in this param instead of using the editor context
+     *                  (quicker and better) isolation
+     * @return {nothing}    nothing
+    ###
     _domWalk : (elemt, context) ->
-        absDepth = context.absDepth
+        this.__domWalk(elemt, context)
+        # if a line was being populated, append it to the frag
+        if context.currentLineFrag.childNodes.length > 0
+            p = 
+                sourceLine         : context.lastAddedLine
+                fragment           : context.currentLineFrag
+                targetLineType     : "Tu"
+                targetLineDepthAbs : context.absDepth
+                targetLineDepthRel : context.absDepth
+            context.lastAddedLine = @_insertLineAfter(p)
+
+
+    ###*
+     * Walks thoug an html tree in order to convert it in a strutured content
+     * that fit to a note structure.
+     * @param  {html element} elemt   Reference to an html element to be parsed
+     * @param  {object} context __domWalk is recursive and its context of execution
+     *                  is kept in this param instead of using the editor context
+     *                  (quicker and better) isolation
+     * @return {nothing}    nothing
+    ###
+    __domWalk : (elemt, context) ->
+        absDepth    = context.absDepth
         prevHxLevel = context.prevHxLevel
-        result = ""
+        result      = ""
+        for child in elemt.childNodes
+            switch child.nodeName
+                when '#text'
+                    txtNode = document.createTextNode(child.textContent)
+                    if context.currentLineEl == null
+                        g=2
+
+                    context.currentLineEl.appendChild(txtNode)
+                when 'UL', 'OL'
+                    # works well, unactivated until to realy develop this feature
+                    # for the moment all lines are inserted at the same absDepth
+                    # result += @__domWalk(child,absDepth+1 )
+                    context.absDepth = absDepth
+                    result += @__domWalk(child,context )
+                when 'H1','H2','H3','H4','H5','H6'
+                    if prevHxLevel == null
+                        prevHxLevel = +child.nodeName[1]
+                    newHxLevel = +child.nodeName[1]
+                    deltaHxLevel = newHxLevel-prevHxLevel
+                    if deltaHxLevel > 0
+                        # works well, unactivated until to realy develop this feature
+                        # for the moment all lines are inserted at the same absDepth
+                        # context.absDepth = absDepth+1 
+                        context.prevHxLevel = newHxLevel
+                        result += @__domWalk(child, context)
+                    else 
+                        context.absDepth = absDepth+deltaHxLevel
+                        context.prevHxLevel = newHxLevel
+                        result += @__domWalk(child, context)
+                when 'P', 'BR', 'LI'
+                    # if a line was being populated, append it to the frag
+                    if context.currentLineFrag.childNodes.length > 0
+                        p = 
+                            sourceLine         : context.lastAddedLine
+                            fragment           : context.currentLineFrag
+                            targetLineType     : "Tu"
+                            targetLineDepthAbs : absDepth
+                            targetLineDepthRel : absDepth
+                        context.lastAddedLine = @_insertLineAfter(p)
+                        # prepare the new lingFrag & lineEl
+                        context.currentLineFrag = document.createDocumentFragment()
+                        context.currentLineEl = context.currentLineFrag
+                    # walk throught the child and append it to the frag
+                    @__domWalk(child, context)
+                    type = 'todo'
+                    console.log Array(absDepth+1).join('|  ')+context.currentLineFrag.textContent + " - [type:"+type+" - AbsDepth:"+absDepth+"]\n"
+                    p = 
+                        sourceLine         : context.lastAddedLine
+                        fragment           : context.currentLineFrag
+                        targetLineType     : "Tu"
+                        targetLineDepthAbs : absDepth
+                        targetLineDepthRel : absDepth
+                    context.lastAddedLine = @_insertLineAfter(p)
+                    # 
+                    context.currentLineFrag = document.createDocumentFragment()
+                    context.currentLineEl = context.currentLineFrag
+                when 'A'
+                    # insert a <a> in the currentLineFrag
+                    aNode = document.createElement('a')
+                    initialCurrentLineEl = context.currentLineEl
+                    context.currentLineEl.appendChild(aNode)
+                    context.currentLineEl = aNode
+                    result += @__domWalk(child, context)
+                    context.currentLineEl = initialCurrentLineEl
+                when 'B'
+                    # insert a <span> in the currentLineFrag
+                    spanNode = document.createElement('span')
+                    initialCurrentLineEl = context.currentLineEl
+                    context.currentLineEl.appendChild(spanNode)
+                    context.currentLineEl = spanNode
+                    result += @__domWalk(child, context)
+                    context.currentLineEl = initialCurrentLineEl
+                when 'SPAN'
+                    # insert a <span> in the currentLineFrag
+                    # insert a <span> in the currentLineFrag
+                    spanNode = document.createElement('span')
+                    initialCurrentLineEl = context.currentLineEl
+                    context.currentLineEl = spanNode
+                    context.currentLineFrag.appendChild(spanNode)
+                    result += @__domWalk(child, context)
+                    context.currentLineEl = initialCurrentLineEl
+                when 'DIV'
+                    if child.id.substr(0,5)=='CNID_'
+                        @_clipBoard_Insert_InternalLine(child, context)
+                    else
+                        result += @__domWalk(child, context)
+                else
+                    pb = true
+
+        return true    
+
+
+
+
+
+    ###*
+     * Walks thoug an html tree in order to convert it in a strutured content
+     * that fit to a note structure.
+     * @param  {html element} elemt   Reference to an html element to be parsed
+     * @param  {object} context _domWalk is recursive and its context of execution
+     *                                   is kept in this param instead of using
+     *                                   the editor context (quicker and better)
+     *                                   isolation
+     * @return {nothing}         nothing
+    ###
+    _domWalk_old : (elemt, context) ->
+        absDepth    = context.absDepth
+        prevHxLevel = context.prevHxLevel
+        result      = ""
         for child in elemt.childNodes
             if child.nodeType == Node.TEXT_NODE
                 txt = child.textContent
                 txtTrimmed = txt.trim()
+                txtTrimmed = txt
+                # Remarqs : 
                 # In the dom, after each element, there is a TextNode 
                 # with text = "\n      " (seen in ff and chrome)
                 # That's why we trim strings and eleminate empty txtTrimmed. 
@@ -2138,17 +2315,23 @@ class exports.CNEditor extends Backbone.View
                 # an element ? 
                 # ex : <p><TextNode>content1</TextNode><TextNode>content2</TextNode></p>
                 # if yes, we should consider concatenate those TextNodes : to be done
+                # the method normalize() concatenate suche textnodes
                 if txtTrimmed != ""  
-                    txtTrimmed = "<span>"+txtTrimmed+"</span>"
+                    # txtTrimmed = "<span>"+txtTrimmed+"</span>"
+                    fragment = document.createElement('span')
+                    textNode = document.createTextNode(txtTrimmed)
+                    fragment.appendChild(textNode)
                     type = "tyty"
                     result += Array(absDepth+1).join('|  ')+"<span>"+txtTrimmed+"</span>"+" - [type:"+type+" - AbsDepth:"+absDepth+"]\n"
                     p = 
                         sourceLine         : context.lastAddedLine
-                        fragment           : txtTrimmed
+                        fragment           : fragment
                         targetLineType     : "Tu"
                         targetLineDepthAbs : absDepth
                         targetLineDepthRel : absDepth
-                    context.lastAddedLine = @_insertLineAfter(p)
+                    context.lastAddedLine = @_insertLineAfter(p) 
+                    # note : the line will be inserted in the parent of 
+                    # sourceLine, id est the fragment created in _processPaste
             else
                 switch child.nodeName
                     when 'UL', 'OL'
@@ -2181,9 +2364,10 @@ class exports.CNEditor extends Backbone.View
         # position carret
 
         return result    
+
+
     ###*
-     * Insert in the editor a line from a pasted line that comes from a copy a line in a 
-     * cozy note editor
+     * Insert in the editor a line that was copied in a cozy note editor
      * @param  {html element} elemt a div ex : <div id="CNID_7" class="Lu-3"> ... </div>
      * @return {line}        a ref to the line object
     ###
