@@ -2081,6 +2081,10 @@ class exports.CNEditor extends Backbone.View
         # what is incorrect when styles will be taken into account.
         targetNode   = currSel.range.startContainer
         startOffset  = currSel.range.startOffset
+        if targetNode.length
+            endOffset = targetNode.length - startOffset
+        else
+            endOffset = targetNode.childNodes.length - startOffset
         i=0
         lineElements = frag.firstChild.childNodes
         nbElements   = lineElements.length
@@ -2108,12 +2112,11 @@ class exports.CNEditor extends Backbone.View
                 parendDiv = parendDiv.parentElement
             range.setEnd(parendDiv,parendDiv.children.length-1)
             endTargetLineFrag = range.extractContents()
-            endTargetLineNodesLength = endTargetLineFrag.childNodes.length
             range.detach()
             this._insertFrag(
-                frag.lastChild, 
-                frag.lastChild.children.length-1, 
-                endTargetLineFrag)
+                frag.lastChild,                    # last line of frag
+                frag.lastChild.children.length-1,  # penultimate node of last line
+                endTargetLineFrag)                 # the frag to insert
             # TODO : the next 3 lines are required for firebug to detect
             # breakpoints ! ! !   ????????
             parendDiv = targetNode
@@ -2140,8 +2143,10 @@ class exports.CNEditor extends Backbone.View
         
         # 5- position caret
         if secondAddedLine != null
-            caretTarget = lineNextStartLine.linePrev.line$[0]
-            currSel.sel.collapse(caretTarget, caretTarget.childNodes.length-1-endTargetLineNodesLength)
+            # Assumption : last inserted line always has at least one <span> with only text inside
+            caretTextNodeTarget = lineNextStartLine.linePrev.line$[0].childNodes[0].firstChild
+            caretOffset = caretTextNodeTarget.length - endOffset
+            currSel.sel.collapse(caretTextNodeTarget, caretOffset)
         else
             currSel.sel.collapse(targetNode, startOffset)
 
@@ -2149,22 +2154,36 @@ class exports.CNEditor extends Backbone.View
 
     ###*
      * Insert a frag in a node container at startOffset
+     * ASSERTION : 
      * TODO : this method could be also used in _deleteMultiLinesSelections 
      * especialy if _insertFrag optimizes the insertion by fusionning cleverly
      * the elements
-     * @param  {Node} startContainer the element where to make the insert
-     * @param  {Integer} startOffset    the offset of insertion in startContainer
+     * @param  {Node} targetContainer the node where to make the insert
+     * @param  {Integer} targetOffset    the offset of insertion in targetContainer
      * @param  {fragment} frag           the fragment to insert
      * @return {nothing}                nothing
     ###
-    _insertFrag : (startContainer, startOffset, frag) ->
-            # lineDiv = startContainer
-            # while lineDiv.tagName != 'DIV'
-            #     lineDiv = lineDiv.parentElement
-            range = document.createRange()
-            range.setStart(startContainer,startOffset)
-            range.setEnd(startContainer,startOffset)
-            range.insertNode(frag)
+    _insertFrag : (targetContainer, targetOffset, frag) ->
+            # for sourceNode in frag
+            #     if targetContainer.nodeName == sourceNode.nodeName
+            #         switch targetContainer.nodeName 
+            #             when '#text'
+            #                 # insert text
+            #                 targetContainer.textContent = targetContainer.textContent.substring(0,targetOffset)+sourceNode.textContent+targetContainer.textContent.substring(targetOffset)
+            #             when 'SPAN'
+            #                 _insertFrag()
+            #                 targetContainer = targetContainer.childNodes[targetOffset]
+
+            if targetOffset == 0
+                range = document.createRange()
+                range.setStart(startContainer,startOffset)
+                range.setEnd(startContainer,startOffset)
+                range.insertNode(frag)
+                range.detach()
+            else
+                if frag.childNodes.length>0
+                    targetNode = targetContainer.childNodes[targetOffset-1]
+                    targetNode.textContent += frag.firstChild.textContent
 
 
 
@@ -2291,14 +2310,14 @@ class exports.CNEditor extends Backbone.View
                         # prepare the new lingFrag & lineEl
                         context.currentLineFrag = document.createDocumentFragment()
                         context.currentLineEl = context.currentLineFrag
-                when 'A'
-                    # insert a <a> in the currentLineFrag
-                    aNode = document.createElement('a')
-                    initialCurrentLineEl = context.currentLineEl
-                    context.currentLineEl.appendChild(aNode)
-                    context.currentLineEl = aNode
-                    result += @__domWalk(child, context)
-                    context.currentLineEl = initialCurrentLineEl
+                # when 'A'
+                #     # insert a <a> in the currentLineFrag
+                #     aNode = document.createElement('a')
+                #     initialCurrentLineEl = context.currentLineEl
+                #     context.currentLineEl.appendChild(aNode)
+                #     context.currentLineEl = aNode
+                #     result += @__domWalk(child, context)
+                #     context.currentLineEl = initialCurrentLineEl
                 when 'B','STRONG'
                     # insert a <span> in the currentLineFrag
                     spanNode = document.createElement('strong')
@@ -2329,7 +2348,13 @@ class exports.CNEditor extends Backbone.View
                     else
                         result += @__domWalk(child, context)
                 else
-                    pb = true
+                    lastInsertedEl = context.currentLineEl.lastChild
+                    if lastInsertedEl != null and lastInsertedEl.nodeName=='SPAN'
+                        lastInsertedEl.textContent += child.textContent
+                    else
+                        spanNode = document.createElement('span')
+                        spanNode.textContent = child.textContent
+                        context.currentLineEl.appendChild(spanNode)
 
         return true    
 
