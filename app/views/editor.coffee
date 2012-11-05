@@ -80,7 +80,10 @@ class exports.CNEditor extends Backbone.View
                     console.log "pasting..."
                     @paste(e)
 
-                # 4- return a ref to the editor's controler
+                # 4- init clipboard div
+                @_initClipBoard()
+
+                # 5- return a ref to the editor's controler
                 callBack.call(this)
                 return this
 
@@ -128,6 +131,8 @@ class exports.CNEditor extends Backbone.View
                 callBack.call(this)
                 return this
             allSetter()
+            # init clipboard div
+            @_initClipBoard()
 
 
     ### ------------------------------------------------------------------------
@@ -161,6 +166,7 @@ class exports.CNEditor extends Backbone.View
     replaceContent : (htmlContent) ->
         @editorBody$.html( htmlContent )
         @_readHtml()
+        @_initClipBoard()
         #@_buildSummary()
 
     ### ------------------------------------------------------------------------
@@ -170,6 +176,7 @@ class exports.CNEditor extends Backbone.View
         @editorBody$.html '<div id="CNID_1" class="Tu-1"><span></span><br></div>'
         # update the controler
         @_readHtml()
+        @_initClipBoard()
         #@_buildSummary()
     
     
@@ -188,6 +195,7 @@ class exports.CNEditor extends Backbone.View
         @editorBody$.html cozyContent
         # update the controler
         @_readHtml()
+        @_initClipBoard()
                   
     ###
     # Change the path of the css applied to the editor iframe
@@ -1927,7 +1935,7 @@ class exports.CNEditor extends Backbone.View
     ###
     paste : (event) ->
         # init the div where the paste will actualy accur. 
-        mySandBox = @_initClipBoard()
+        mySandBox = @clipboard
         # save current selection 
         # TODO BJA : is it usefull ?? the range of the
         # selection should be enoght since there is no modification of the 
@@ -1970,19 +1978,21 @@ class exports.CNEditor extends Backbone.View
      * @return {obj} a ref to the pasted content
     ###
     _initClipBoard : () ->
-        clipboard = @editorBody$.children("#clipboard-sandbox")
-        if clipboard.length == 0   # TODO BJA should be done once at initialisation of
-            clipboard = $ document.createElement('div')
+        clipboard$ = @editorBody$.children("#clipboard-sandbox")
+        if clipboard$.length == 0   # TODO BJA should be done once at initialisation of
+            clipboard$ = $ document.createElement('div')
             # clipboard.attr('contenteditable', true)
-            clipboard.attr('display', "none") # TODO BJA : this attributes doesn't exist : should be removed ?
-            clipboard.html 'hello txt'
-            clipboard.attr('id', "clipboard-sandbox")
+            clipboard$.html 'hello txt'
+            clipboard$.attr('id', "clipboard-sandbox")
             getOffTheScreen =
-                left: 300  # -1000
-                top : 10   # -1000
-            clipboard.offset getOffTheScreen
-            clipboard.prependTo @editorBody$
-        return clipboard[0]
+                left: -300  # -1000
+            clipboard$.offset getOffTheScreen
+            clipboard$.prependTo @editorBody$
+            clipboard = clipboard$[0]
+            style = clipboard.style
+            style.setProperty('width','280px')
+        @clipboard = clipboard
+        return clipboard
             
     _waitForPasteData : (sandbox, processpaste) ->
         ( waitforpastedata = (elem) ->
@@ -2030,14 +2040,16 @@ class exports.CNEditor extends Backbone.View
         domWalkContext = 
             absDepth           : absDepth,
             prevHxLevel        : null,
+            frag               : frag,
             # previous Cozy Note Line Abs Depth
             prevCNLineAbsDepth : null, 
             # last line added in the editor (ed.lines)
-            lastAddedLine      : dummyLine
+            lastAddedLine      : dummyLine,
             # line that is under construction
-            currentLineFrag     : currentLineFrag
+            currentLineFrag     : currentLineFrag,
             # last element of currentLineFrag being populated by _domWalk
-            currentLineEl       : currentLineFrag
+            currentLineEl       : currentLineFrag,
+            isCurrentLineBeingPopulated : false
         htmlStr = @_domWalk(sandbox,domWalkContext)
         sandbox.innerHTML = "" # comment for tests.
         # sandbox.innerHTML = pasteddata
@@ -2233,22 +2245,41 @@ class exports.CNEditor extends Backbone.View
                         spaneEl = document.createElement('span')
                         spaneEl.appendChild(txtNode)
                         context.currentLineEl.appendChild(spaneEl)
-                when 'UL', 'OL'
+                    context.isCurrentLineBeingPopulated = true
+                when 'P', 'UL', 'OL'
                     # works well, unactivated until to realy develop this feature
                     # for the moment all lines are inserted at the same absDepth
                     # result += @__domWalk(child,absDepth+1 )
                     context.absDepth = absDepth
                     result += @__domWalk(child,context )
+                    if context.isCurrentLineBeingPopulated
+                        if context.currentLineFrag.childNodes.length == 0
+                            spanNode = document.createElement('span')
+                            context.currentLineFrag.appendChild(spanNode)
+                        p = 
+                            sourceLine         : context.lastAddedLine
+                            fragment           : context.currentLineFrag
+                            targetLineType     : "Tu"
+                            targetLineDepthAbs : absDepth
+                            targetLineDepthRel : absDepth
+                        context.lastAddedLine = @_insertLineAfter(p)
+                        # prepare the new lingFrag & lineEl
+                        context.currentLineFrag = document.createDocumentFragment()
+                        context.currentLineEl = context.currentLineFrag
+                        context.isCurrentLineBeingPopulated = false
                 when 'H1','H2','H3','H4','H5','H6'
                     # if prevHxLevel == null
                     #     prevHxLevel = +child.nodeName[1]-1
                     # newHxLevel = +child.nodeName[1]
                     # deltaHxLevel = newHxLevel-prevHxLevel
-                    deltaHxLevel=0
+                    deltaHxLevel =0
 
-                    result              += @__domWalk(child, context)
+                    result      += @__domWalk(child, context)
                     # if a line was being populated, append it to the frag
-                    if context.currentLineFrag.childNodes.length > 0
+                    if context.isCurrentLineBeingPopulated
+                        if context.currentLineFrag.childNodes.length == 0
+                            spanNode = document.createElement('span')
+                            context.currentLineFrag.appendChild(spanNode)
                         p = 
                             sourceLine         : context.lastAddedLine
                             fragment           : context.currentLineFrag
@@ -2259,6 +2290,7 @@ class exports.CNEditor extends Backbone.View
                         # prepare the new lingFrag & lineEl
                         context.currentLineFrag = document.createDocumentFragment()
                         context.currentLineEl = context.currentLineFrag
+                        context.isCurrentLineBeingPopulated = false
                     # if deltaHxLevel > 0
                     #     absDepth             = absDepth+1
                     #     context.absDepth     = absDepth
@@ -2270,9 +2302,12 @@ class exports.CNEditor extends Backbone.View
                     #     prevHxLevel          = newHxLevel
                     #     context.prevHxLevel  = newHxLevel
 
-                when 'P', 'LI'
+                when 'LI'
                     # if a line was being populated, append it to the frag
-                    if context.currentLineFrag.childNodes.length > 0
+                    if context.isCurrentLineBeingPopulated
+                        if context.currentLineFrag.childNodes.length == 0
+                            spanNode = document.createElement('span')
+                            context.currentLineFrag.appendChild(spanNode)
                         p = 
                             sourceLine         : context.lastAddedLine
                             fragment           : context.currentLineFrag
@@ -2285,21 +2320,12 @@ class exports.CNEditor extends Backbone.View
                         context.currentLineEl = context.currentLineFrag
                     # walk throught the child and append it to the frag
                     @__domWalk(child, context)
-                    type = 'todo'
-                    console.log Array(absDepth+1).join('|  ')+context.currentLineFrag.textContent + " - [type:"+type+" - AbsDepth:"+absDepth+"]\n"
-                    p = 
-                        sourceLine         : context.lastAddedLine
-                        fragment           : context.currentLineFrag
-                        targetLineType     : "Tu"
-                        targetLineDepthAbs : absDepth
-                        targetLineDepthRel : absDepth
-                    context.lastAddedLine = @_insertLineAfter(p)
-                    # 
-                    context.currentLineFrag = document.createDocumentFragment()
-                    context.currentLineEl = context.currentLineFrag
-                when 'BR'
-                    # if a line was being populated, append it to the frag
-                    if context.currentLineFrag.childNodes.length > 0
+                    if context.isCurrentLineBeingPopulated
+                        type = 'todo'
+                        console.log Array(absDepth+1).join('|  ')+context.currentLineFrag.textContent + " - [type:"+type+" - AbsDepth:"+absDepth+"]\n"
+                        if context.currentLineFrag.childNodes.length == 0
+                            spanNode = document.createElement('span')
+                            context.currentLineFrag.appendChild(spanNode)
                         p = 
                             sourceLine         : context.lastAddedLine
                             fragment           : context.currentLineFrag
@@ -2307,9 +2333,40 @@ class exports.CNEditor extends Backbone.View
                             targetLineDepthAbs : absDepth
                             targetLineDepthRel : absDepth
                         context.lastAddedLine = @_insertLineAfter(p)
-                        # prepare the new lingFrag & lineEl
+                        # 
                         context.currentLineFrag = document.createDocumentFragment()
                         context.currentLineEl = context.currentLineFrag
+                        context.isCurrentLineBeingPopulated = false
+
+                when 'BR'
+                    # append the line that was being populated to the frag
+                    if context.currentLineFrag.childNodes.length == 0
+                        spanNode = document.createElement('span')
+                        context.currentLineFrag.appendChild(spanNode)
+                    p = 
+                        sourceLine         : context.lastAddedLine
+                        fragment           : context.currentLineFrag
+                        targetLineType     : "Tu"
+                        targetLineDepthAbs : absDepth
+                        targetLineDepthRel : absDepth
+                    context.lastAddedLine = @_insertLineAfter(p)
+                    # prepare the new lineFrag & lineEl
+                    context.currentLineFrag = document.createDocumentFragment()
+                    context.currentLineEl = context.currentLineFrag
+                    context.isCurrentLineBeingPopulated = false
+                
+                when 'A'
+                    lastInsertedEl = context.currentLineEl.lastChild
+                    if lastInsertedEl != null and lastInsertedEl.nodeName=='SPAN'
+                        lastInsertedEl.textContent += '[[' + child.textContent + '|'+ child.href+']]'
+                    else
+                        spanNode = document.createElement('span')
+                        spanNode.textContent = child.textContent + ' [[' + child.href+']] '
+                        context.currentLineEl.appendChild(spanNode)
+                    context.isCurrentLineBeingPopulated = true
+                
+                # ###
+                # ready for styles to be taken into account
                 # when 'A'
                 #     # insert a <a> in the currentLineFrag
                 #     aNode = document.createElement('a')
@@ -2318,30 +2375,34 @@ class exports.CNEditor extends Backbone.View
                 #     context.currentLineEl = aNode
                 #     result += @__domWalk(child, context)
                 #     context.currentLineEl = initialCurrentLineEl
-                when 'B','STRONG'
-                    # insert a <span> in the currentLineFrag
-                    spanNode = document.createElement('strong')
-                    initialCurrentLineEl = context.currentLineEl
-                    context.currentLineEl.appendChild(spanNode)
-                    context.currentLineEl = spanNode
-                    result += @__domWalk(child, context)
-                    context.currentLineEl = initialCurrentLineEl
-                when 'I','EM'
-                    # insert a <span> in the currentLineFrag
-                    spanNode = document.createElement('EM')
-                    initialCurrentLineEl = context.currentLineEl
-                    context.currentLineEl.appendChild(spanNode)
-                    context.currentLineEl = spanNode
-                    result += @__domWalk(child, context)
-                    context.currentLineEl = initialCurrentLineEl
-                when 'SPAN'
-                    # insert a <span> in the currentLineFrag
-                    spanNode = document.createElement('span')
-                    initialCurrentLineEl = context.currentLineEl
-                    context.currentLineEl = spanNode
-                    context.currentLineFrag.appendChild(spanNode)
-                    result += @__domWalk(child, context)
-                    context.currentLineEl = initialCurrentLineEl
+                #     context.isCurrentLineBeingPopulated = true
+                # when 'B','STRONG'
+                #     # insert a <span> in the currentLineFrag
+                #     spanNode = document.createElement('strong')
+                #     initialCurrentLineEl = context.currentLineEl
+                #     context.currentLineEl.appendChild(spanNode)
+                #     context.currentLineEl = spanNode
+                #     result += @__domWalk(child, context)
+                #     context.currentLineEl = initialCurrentLineEl
+                #     context.isCurrentLineBeingPopulated = true
+                # when 'I','EM'
+                #     # insert a <span> in the currentLineFrag
+                #     spanNode = document.createElement('EM')
+                #     initialCurrentLineEl = context.currentLineEl
+                #     context.currentLineEl.appendChild(spanNode)
+                #     context.currentLineEl = spanNode
+                #     result += @__domWalk(child, context)
+                #     context.currentLineEl = initialCurrentLineEl
+                #     context.isCurrentLineBeingPopulated = true
+                # when 'SPAN'
+                #     # insert a <span> in the currentLineFrag
+                #     spanNode = document.createElement('span')
+                #     initialCurrentLineEl = context.currentLineEl
+                #     context.currentLineEl = spanNode
+                #     context.currentLineFrag.appendChild(spanNode)
+                #     result += @__domWalk(child, context)
+                #     context.currentLineEl = initialCurrentLineEl
+                #     context.isCurrentLineBeingPopulated = true
                 when 'DIV'
                     if child.id.substr(0,5)=='CNID_'
                         @_clipBoard_Insert_InternalLine(child, context)
@@ -2355,6 +2416,7 @@ class exports.CNEditor extends Backbone.View
                         spanNode = document.createElement('span')
                         spanNode.textContent = child.textContent
                         context.currentLineEl.appendChild(spanNode)
+                    context.isCurrentLineBeingPopulated = true
 
         return true    
 
