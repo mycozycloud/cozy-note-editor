@@ -1,0 +1,33 @@
+A list of nasty bugs that should (and will) disappear
+
+ → BUG: when performing a _return or a _backspace on an empty line
+   this bug has appeared since the modification of normalization done to assure
+   compatibility under Google chrome
+   I tried to correct it with the flag property 'isEmptyLine' but i seem to 
+   have failed x(
+
+ → when double-clicking on the end of a line, the range obtained is like
+   startContainer = BODY
+   endContainer = BODY
+   and the offets correspond to the div which was doubleclicked
+   Many functions did not consider this situation so i tried to fix it
+     (see example in source code l.615)
+   However I think it's fine to keep that issue in mind for further bugs :-)
+
+ 
+ → in the linemotion functions (l.1628), behavior should be special when moving
+   the first line down, or the second line up. I started to code something but 
+   it's not a good solution (l.1835)
+     > as a solution I think about adding an ivisible 'sentinel line' before the
+       first line of the editor, so the rest of the code still works for the 
+       second line.
+     
+
+ → about the md2cozy converter (l.2269) :
+   translation fails around l.19 in the example file 
+   './templates/content-shortlines-marker'
+   and this is annoying :s
+
+ → when doing Shift-left at the beginning of a line, the browser only selects 
+   the br of the previous line (this shortcut should be controlled, as well
+   as Shift-right/left/up/pgDwn/pgUp/end/home... controlled or prevented :-) )

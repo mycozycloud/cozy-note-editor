@@ -18,8 +18,10 @@ exports.initPage =  ()->
     $("body").html require('./templates/editor')
     editorIframe$ = $("iframe")
 
-    # $("iframe").on "onHistoryChanged", () ->
+    # $("iframe").on "onHistoryChanged", (e) ->
         # console.log "history updated"
+    # $("iframe").on "onKeyUp", (e) ->
+        # console.log "history not updated"
     
     # callback to execute after editor's initialization
     # the contexte (this) inside the function is the editor
@@ -224,10 +226,6 @@ exports.initPage =  ()->
         $("#logEditorCtrlerBtn").on "click", () ->
             console.log editorCtrler
 
-
-        # display whether the user has moved the carret with keyboard or mouse.
-        this.editorBody$.on 'mouseup' , () =>
-            $("#editorPropertiesDisplay").text("newPosition = true")
 
         # automatic summary
         # this.editorBody$.on 'mouseup', () =>
