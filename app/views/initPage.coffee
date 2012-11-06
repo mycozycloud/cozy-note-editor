@@ -40,17 +40,17 @@ exports.initPage =  ()->
         # edCtrl = editorFactory.create( editorIframe$ )
 
         ### initialisation of the page
-        # this.replaceContent( require('./templates/content-empty') )
-        # this.replaceContent( require('./templates/content-full') )
-        # this.replaceContent( require('./templates/content-full-marker') )
-        # this.replaceContent( require('./templates/content-full-relative-indent') )
-        # this.replaceContent( require('./templates/content-shortlines-marker') )
-        ###
-        # this.replaceContent( require('./templates/content-shortlines-all') )
-        # this.replaceContent( require('./templates/content-shortlines-all-hacked') )
+        this.replaceContent( require('./templates/content-empty') )
+        this.replaceContent( require('./templates/content-full') )
+        this.replaceContent( require('./templates/content-full-marker') )
+        this.replaceContent( require('./templates/content-shortlines-marker') )
+        this.replaceContent( require('./templates/content-full-relative-indent') )
+        this.replaceContent( require('./templates/content-shortlines-all-hacked') )
         this.deleteContent()
+        ###
+        this.replaceContent( require('./templates/content-shortlines-all') )
 
-        
+        #### -------------------------------------------------------------------
         # buttons init, beautify actions
         editorCtrler = this
         editorBody$  = this.editorBody$
@@ -84,6 +84,7 @@ exports.initPage =  ()->
         $('#cssSelect').on "change" , (e) ->
             editorCtrler.replaceCSS( e.currentTarget.value )
 
+        #### -------------------------------------------------------------------
         # Buttons for the editor
         # Buttons should probably give back the focus to the editor's iframe
         $("#indentBtn").on "click", () ->
@@ -105,7 +106,13 @@ exports.initPage =  ()->
         # Special buttons (to be removed later)
         #  > tests the code structure
         $("#checkBtn").on "click", () ->
-            checker.checkLines(editorCtrler)
+            res = checker.checkLines(editorCtrler)
+            date = new Date()
+            st = date.getHours()+":"+date.getMinutes()+":"+date.getSeconds()+" - "
+            if res
+                $("#resultText").val(st+"Syntax test success")
+            else
+                $("#resultText").val(st+"Syntax test FAILLURE : cf logs")
         #  > translate cozy code into markdown and markdown to cozy code
         #    Note: in the markdown code there should be two \n between each line
         $("#markdownBtn").on "click", () ->
@@ -195,6 +202,19 @@ exports.initPage =  ()->
                 $("#addClass2LineBtn").html "Hide Class on Lines"
                 editor_doAddClasseToLines = true
                 editorBody$.on 'keyup' , addClassToLines
+
+        #### -------------------------------------------------------------------
+        # auto check of the syntax after a paste
+        editorBody$.on "paste", () ->
+            window.setTimeout( ()->
+                res = checker.checkLines(editorCtrler)
+                date = new Date()
+                st = date.getHours()+":"+date.getMinutes()+":"+date.getSeconds()+" - "
+                if res
+                    $("#resultText").val(st+"Syntax test success")
+                else
+                    $("#resultText").val(st+"Syntax test FAILLURE : cf logs")
+            , 400)
             
         # default behaviour regarding the class at the beginning of the line :
         # comment or uncomment depending default expected behaviour
@@ -202,12 +222,17 @@ exports.initPage =  ()->
         # $("#addClass2LineBtn").html "Hide Class on Lines"
         # editorBody$.on 'keyup', addClassToLines
         # editor_doAddClasseToLines = true
+        
+        $("#logEditorCtrlerBtn").on "click", () ->
+            console.log editorCtrler
+
 
         # automatic summary
         # this.editorBody$.on 'mouseup', () =>
         #     this.buildSummary()
         # this.editorBody$.on 'keyup', () =>
         #     this.buildSummary()
+
     # creation of the editor
     editor = new CNEditor( $('#editorIframe')[0], cb )
     return editor
